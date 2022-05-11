@@ -10,6 +10,8 @@ library(sna)
 library(igraph)
 # library(ggraph)
 library(ergm)
+library(parallel)
+library(RSiena)
 
 library(GGally)
 library(network)
