@@ -1,0 +1,2711 @@
+---
+title: "R Notebook"
+output: pdf_document
+---
+
+# Packages, workingdirectory and loading data
+```{r loading data}
+knitr::opts_chunk$set(echo = FALSE,cache = TRUE)
+sourceDir <- getSrcDirectory(function(dummy) {dummy})
+knitr::opts_knit$set(root.dir = sourceDir)
+list.of.packages <- c("rjags","runjags","lme4","car","lattice","coda","lmerTest","mcmcplots","plyr","dplyr","ggplot2","DataExplorer","grid","GGally","BAS","sjmisc","devtools","psych","graphics","psycho","foreign","kableExtra")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos = "http://cran.us.r-project.org")
+lapply(list.of.packages, require, character.only = TRUE)
+
+rm(list=ls())  # clears all of R's memory!
+
+# set workingdirectory and load data
+setwd("C:/Users/anna_/Desktop/stats assignment")
+data <- load("C:/Users/anna_/Desktop/stats assignment/cctedata.Rdata")
+```
+# Preparation for the first question
+```{r}
+#creating a dataframe for questions
+data0 <- data.frame("condition" = ccte$Condition, "enjoy" = ccte$Enjoy, "boring" = ccte$Boring, "entertain" = ccte$Entertain)
+
+# check if dataframe has missing values
+data0[!complete.cases(data0),]
+
+#variables
+Enjoyment <- ccte$Enjoy
+Boring <- ccte$Boring
+Entertain <- ccte$Entertain
+Condition <- data0$condition
+
+#re-order boring
+Boringreorder <- as.numeric(recode(Boring, `1` = "9", `2` = "8", `3` = "7", `4` = "6", `5` = "5", `6` = "4", `7` = "3", `8` = "2", `9` = "1"))
+
+#cronbach's alpha
+datasetcronbach=data.frame(Boringreorder, Enjoyment, Entertain)
+psych::alpha(datasetcronbach)
+
+#create new variable 
+enjoy = 1/3 * Boringreorder + 1/3 * Enjoyment + 1/3 * Entertain
+```
+
+## Question 1 ##
+```{r}
+#dataframe for Q1
+data1 <- data.frame("condition" = ccte$Condition, enjoy)
+
+# Exploration of the data
+
+# Descriptive summary statistics
+mean.all <- tapply(enjoy,Condition,mean)
+sd.all <- tapply(enjoy,Condition,sd)
+var.all <- tapply(enjoy,Condition,var)
+freq.all <- table(enjoy)
+
+summary(mean.all)
+summary(sd.all)
+summary(var.all)
+summary(freq.all)
+
+#plot
+ggplot(data1, aes(x=condition, y=enjoy)) + stat_summary(fun.y="mean", geom="bar")
+
+plot(data1, main = "Boxplots of conditions versus enjoyment", xlab = "Condition", ylab = "Enjoyment")
+```
+
+```{r}
+## classical analysis
+t.test(formula = Enjoyment ~ Condition, # formula: Enjoyment is a function of group
+       data = data1,  # data frame that holds the Enjoyment and Condition variables
+       var.equal=T # let's assume the variances are equal in the two groups
+)
+
+# Get the data in the correct format
+x = as.numeric(data1[,"enjoy"])
+y = as.numeric(as.factor(data1[,"condition"])) #group 2 is doing; group 1 is thinking  
+
+# Specify the data in a list, for later shipment to JAGS:
+data = list(
+  x = x , # all scores
+  subj = y , # index of group membership (1 or 2)
+  n = length(unique(y)), # number of groups
+  ndata = length(x)  # total number of measurements
+)
+
+myinits=NULL
+
+# parameters to be monitored:   
+parameters <- c("mu", "sigma", "dic")
+
+out <- run.jags( model="AssignmentQ1.txt" , monitor=parameters , data=data ,  inits=myinits , n.chains=3 ,  adapt=1000 , burnin=1000 ,  sample=10000) 
+summary(out)
+
+#compute effect size 
+delta<-( combine.mcmc(out$mcmc)[,"mu[2]"]-combine.mcmc(out$mcmc)[,"mu[1]"] )/ combine.mcmc(out$mcmc)[,"sigma"]
+mean(delta)
+
+## Check the convergence
+gelman.diag(as.mcmc.list(out), multivariate=TRUE)
+
+## Trace plots
+gelman.plot(as.mcmc.list(out))#shrink factor
+plot(as.mcmc.list(out)[,c("mu[1]", "sigma")])
+plot(as.mcmc.list(out)[,c("mu[2]", "sigma")])
+#plot(out[,c("mu[1]", "sigma")]) #this one does not work yet
+## Autocorrelation
+autocorr.plot(out[[1]][,1:2])
+## Effective sample size
+effectiveSize(out)
+## Model fitness
+mod2DIC = out$dic[1]
+mod2DIC
+```
+
+```{r}
+## calculate the credibility interval on the effect size
+quantile(delta, c(.025,.975))
+par(cex.main = 1.5, mar = c(5, 6, 4, 5) + 0.1, mgp = c(3.5, 1, 0), cex.lab = 1.5,
+    font.lab = 2, cex.axis = 1.3, bty = "n", las=1)
+Nbreaks <- 80
+y       <- hist(delta, Nbreaks, plot=F)
+plot(c(y$breaks, max(y$breaks)), c(0,y$density,0), type="S", lwd=2, lty=1,
+     xlab="Effect size", ylab="Posterior Density") 
+segments(c(y$breaks, max(y$breaks)), rep(0,89),
+         c(y$breaks, max(y$breaks)),
+         c(0,y$density,0), col=rgb(0,0,0, alpha=.2))
+title(main =expression(paste("density plot of ", delta)))
+
+## prior on effect size
+# Specify the data in a list, for later shipment to JAGS:
+x1 = data1$enjoy[data1$condition=="Doing"]
+x2 = data1$enjoy[data1$condition=="Thinking"]
+n1<-sum(data1$condition=="Doing")
+n2<-sum(data1$condition=="Thinking")
+
+data = list(
+  x1 = x1 ,
+  x2 = x2 ,
+  n1 = n1,
+  n2 = n2 
+)
+
+parameters <- c("mu", "sigma", "delta", "dic")
+
+outeffect <- run.jags( model="Prioreffectsize.txt" , monitor=parameters , data=data ,  inits=myinits , 
+                       n.chains=3 ,  adapt=1000 , burnin=1000 ,  sample=10000)
+summary(outeffect)
+```
+
+# Baysian Correlation Matrix as preparation for question 2
+```{r}
+## Indication for selecting variables for question 2
+
+# Variables with more then 20 missing values got excluded. Nominal or categorical variables did not get considered neither (e.g.ManipInst, ...).
+
+# baysian correlations between enjoyment and variables without any missing values
+bcdata2 <- ccte %>% dplyr::select(SC0_0, SC0_1, SC0_2, SC1_0, SC1_1, SC1_2, SC2_0, SC2_1, SC2_2, SC3_0, SC3_1, SC3_2, SC3_0, SC3_1, SC3_2, Q36, Q40, SleepHour,Enjoy, Boring, Concentrat, Sitting, Clock, People, ManipTime, Location, TIPI_6, TIPI_7, TimeUse_2, NFC_15, NFC_17, NFC_18, TimeAff_4, TimeAff_5, TimeAff_8, Locomotion_7, Locomotion_12, Locomotion_13, Locomotion_16, SWLS_2, SWLS_3, SWLS_4, IRS_1, EarlySize, NowSize, Mobility)
+bcdata1 <- ccte %>% dplyr::select(Enjoy)
+
+correlations <- bayes_cor(bcdata2, bcdata1)
+summary(correlations)
+print(correlations)
+plot(correlations)
+
+# We select SC0_0, SC1_0, Concentrat
+# SC0_1 and SC1_1 are weigthed averages of already selected variables and are therefore not selected as well. SWL_3 measures the same concept as SC0_0 and is therefore not considered. Neither considered is boring as it later becomes part of enjoyment.
+```
+
+```{r}
+# correlations with smaller/equal 5 missing values
+bcdata3 <- ccte %>% dplyr::select(Meditate, Education, MindWander, Gender, ManipInst, SWLS_1, SWLS_5, TIPI_1, TIPI_2, TIPI_3, TIPI_4, TIPI_5, TIPI_8, TIPI_9, TIPI_10, TimeUse_1, TimeUse_3, TimeUse_4, TimeUse_5, TimeUse_6, RHistory_4, RHistory_5, IRS_9, IRS_12, TimeCheck_1, TimeCheck_2, TimeCheck_3, TimeCheck_4, Community_1)
+bcdata1 <- ccte %>% dplyr::select(Enjoy)
+
+correlations <- bayes_cor(bcdata3, bcdata1)
+summary(correlations)
+print(correlations)
+plot(correlations)
+
+# We select MindWander
+# ManipInst is not selected due to its categories
+```
+
+```{r}
+# correlations for the cheat questionaire (8 to 13 missing values per variable)
+bcdata4 <- ccte %>% dplyr::select(Cheat_4, Cheat_5, Cheat_7, Cheat_10, Cheat_12, Cheat_14, Cheat_1, Cheat_2, Cheat_3, Cheat_6, Cheat_8, Cheat_9, Cheat_11, Cheat_13)
+bcdata1 <- ccte %>% dplyr::select(Enjoy)
+
+correlations <- bayes_cor(bcdata4, bcdata1)
+summary(correlations)
+print(correlations)
+plot(correlations)
+
+# We select Cheat_9
+# We don´t select Cheat_10 due to it´s similarity to Cheat_9
+```
+
+## Question 2 ##  
+```{r}
+#rename variables for thinking condition
+Condition <- ccte$Condition
+EnjoymentT <- ccte$Enjoy[Condition=="Thinking"]
+BoringT <- ccte$Boring[Condition=="Thinking"]
+EntertainT <- ccte$Entertain[Condition=="Thinking"]
+ConcentrationT = ccte$Concentrat[Condition=="Thinking"]
+CognitionneedT = ccte$SC1_0[Condition=="Thinking"]
+LifeSatisfactionT = ccte$SC0_0[Condition=="Thinking"]
+MinTVT = ccte$Cheat_9[Condition=="Thinking"]
+MindwanderT = ccte$MindWander[Condition=="Thinking"]
+
+#re-order boring
+BoringreorderT <- as.numeric(recode(BoringT, `1` = "9", `2` = "8", `3` = "7", `4` = "6", `5` = "5", `6` = "4", `7` = "3", `8` = "2", `9` = "1"))
+
+#cronbach's alpha
+datasetcronbach=data.frame(BoringreorderT, EnjoymentT, EntertainT)
+psych::alpha(datasetcronbach)
+
+#create variable of enjoy
+EnjoyT = 1/3 * BoringreorderT + 1/3 * EnjoymentT + 1/3 * EntertainT
+
+#create dataframe
+dataQ2T <- data.frame("Enjoy" = EnjoyT, "LifeSatisfaction" = LifeSatisfactionT, "Concentration" = ConcentrationT, "Mindwander" = MindwanderT, "Cognitionneed" = CognitionneedT, "MinTV" = MinTVT)
+
+#delete missing values
+newdataQ2T <- na.omit(dataQ2T)
+
+```
+
+
+```{r}
+#rename variables for doing condition         SC0_0, SC1_0, Concentrat, Cheat_9, MindWander
+EnjoymentD <- ccte$Enjoy[Condition=="Doing"]
+BoringD <- ccte$Boring[Condition=="Doing"]
+EntertainD <- ccte$Entertain[Condition=="Doing"]
+ConcentrationD = ccte$Concentrat[Condition=="Doing"]
+CognitionneedD = ccte$SC1_0[Condition=="Doing"]
+LifeSatisfactionD = ccte$SC0_0[Condition=="Doing"]
+MinTVD = ccte$Cheat_9[Condition=="Doing"]
+MindwanderD = ccte$MindWander[Condition=="Doing"]
+
+#re-order boring
+BoringreorderD <- as.numeric(recode(BoringD, `1` = "9", `2` = "8", `3` = "7", `4` = "6", `5` = "5", `6` = "4", `7` = "3", `8` = "2", `9` = "1"))
+
+#cronbach's alpha
+datasetcronbach=data.frame(BoringreorderD, EnjoymentD, EntertainD)
+psych::alpha(datasetcronbach)
+
+#create variable of enjoy
+EnjoyD = 1/3 * BoringreorderD + 1/3 * EnjoymentD + 1/3 * EntertainD
+
+#create dataframe
+dataQ2D <- data.frame("Enjoy" = EnjoyD, "LifeSatisfaction" = LifeSatisfactionD, "Concentration" = ConcentrationD, "MinTV" = MinTVD, "Mindwander" = MindwanderD, "Cognitionneed" = CognitionneedD)
+
+#delete missing values
+newdataQ2D <- na.omit(dataQ2D)
+```
+
+#Exploratory boxplots for possible predictive factors of Enjoy
+```{r}
+#Concentration
+par(mfrow=c(1,2))
+boxplot(EnjoyT~ConcentrationT,main="Thinking",xlab="Concentration",ylab="Enjoyment", ylim=c(0,10),col = "lightblue",
+        boxwex = .5)
+boxplot(EnjoyD~ConcentrationD,main="Doing",xlab="Concentration",ylab="Enjoyment", ylim=c(0,10),col = "coral2",
+        boxwex = .5)
+
+#Cognitionneed
+par(mfrow=c(1,2))
+boxplot(EnjoyT~CognitionneedT,main="Thinking",xlab="Need for cognition",ylab="Enjoyment", ylim=c(0,10),col = "lightblue",
+        boxwex = .5)
+boxplot(EnjoyD~CognitionneedD,main="Doing",xlab="Need for cognition",ylab="Enjoyment", ylim=c(0,10),col = "coral2",
+        boxwex = .5)
+
+#Lifesatisfaction
+par(mfrow=c(1,2))
+boxplot(EnjoyT~LifeSatisfactionT,main="Thinking",xlab="Life satisfaction",ylab="Enjoyment", ylim=c(0,10),col = "lightblue",
+        boxwex = .5)
+boxplot(EnjoyD~LifeSatisfactionD,main="Doing",xlab="Life satisfaction",ylab="Enjoyment", ylim=c(0,10),col = "coral2",
+        boxwex = .5)
+
+#MinTV
+par(mfrow=c(1,2))
+boxplot(EnjoyT~MinTVT,main="Thinking",xlab="Length watching TV/Movie",ylab="Enjoyment", ylim=c(0,10),col = "lightblue",
+        boxwex = .5)
+boxplot(EnjoyD~MinTVD,main="Doing",xlab="Length watching TV/Movie",ylab="Enjoyment", ylim=c(0,10),col = "coral2",
+        boxwex = .5)
+
+#Mindwander
+par(mfrow=c(1,2))
+boxplot(EnjoyT~MindwanderT,main="Thinking",xlab="Mindwander",ylab="Enjoyment", ylim=c(0,10),col = "lightblue",
+        boxwex = .5)
+boxplot(EnjoyD~MindwanderD,main="Doing",xlab="Mindwander",ylab="Enjoyment", ylim=c(0,10),col = "coral2",
+        boxwex = .5)
+
+```
+
+```{r}
+#frequentist approach for thinking condition ~ multiple linear regression
+model1freq <- lm(EnjoyT ~ ConcentrationT + LifeSatisfactionT + MinTVT + CognitionneedT + MindwanderT)
+summary(model1freq) 
+coefficients(model1freq) # model coefficients
+confint(model1freq, level=0.95) # CIs for model parameters
+residuals(model1freq) # residuals
+anova(model1freq) # anova table
+vcov(model1freq) # covariance matrix for model parameters
+
+```
+
+```{r}
+#frequentist approach for doing condition
+model2freq <- lm(EnjoyD ~ ConcentrationD + LifeSatisfactionD + MinTVD + CognitionneedD + MindwanderD)
+summary(model2freq)
+coefficients(model2freq) # model coefficients
+confint(model2freq, level=0.95) # CIs for model parameters
+residuals(model2freq) # residuals
+anova(model2freq) # anova table
+vcov(model2freq) # covariance matrix for model parameters
+```
+
+```{r}
+# Assumptions for Thinking model
+par(mfrow=c(2,2))
+plot(model1freq)
+
+# Assumptions for Doing model
+par(mfrow=c(2,2))
+plot(model2freq)
+
+```
+
+```{r}
+#check for collinearity
+car::vif(model1freq)
+
+#check for collinearity
+car::vif(model2freq)
+
+#check for pair-wise correlation among all the explanatory variables for thinking condition
+pairwise <-newdataQ2T[,2:6]
+ggpairs(pairwise)
+
+#check for pair-wise correlation among all the explanatory variables for doing condition
+pairwise <-newdataQ2D[,2:6]
+ggpairs(pairwise)
+
+```
+
+```{r}
+# Data for thinking condition
+dataT <- newdataQ2T
+yT <- newdataQ2T$Enjoy
+xT <- as.matrix(newdataQ2T[,2:6])
+NxT <- ncol(xT)
+NtotalT <- length(yT)
+```
+
+# Bayesian Adaptive Sampling for Bayesian Model Averaging and Variable Selection in Linear Models
+```{r}
+#Sample without replacement from a posterior distribution on models
+
+model1bas <- bas.lm(yT~(LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV),
+                    data = dataT,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model1bas)
+
+#Correlation between predictors
+image(1:NxT,1:NxT,abs(cor(xT)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxT,colnames(xT),las=2)
+axis(2,1:NxT,colnames(xT),las=2)
+
+```
+
+```{r}
+### Prediction of enjoyment of thinking condition for observation 10 - comparison with MNP probit analysis 
+BAS10<-dataT[10,]
+predictBAS10 <- predict(model1bas, BAS10, estimator="BMA", interval = "predict", se.fit=TRUE)
+print(predictBAS10$fit)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+
+}"
+
+
+writeLines( model_string , con="model_string.txt" )
+
+
+#datalist
+dataList = list(x=xT, y=yT, Ntotal=NtotalT, Nx=NxT)
+
+#run
+runJagsOutT <- run.jags( model="model_string.txt" , 
+                        monitor=parameters , 
+                        data=dataList ,  
+                        inits=initsList , 
+                        n.chains=nChains ,
+                        adapt=adaptSteps ,
+                        burnin=burnInSteps*1 , 
+                        sample=ceiling(numSavedSteps/nChains)*10,
+                        thin=thinSteps )
+
+codaSamplesT = as.mcmc.list( runJagsOutT )
+
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesT, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesT)
+autocorr.plot(codaSamplesT[[1]][,1:6], ask=FALSE)
+
+
+#inspect posterior
+summary(codaSamplesT)
+
+##graphical inspection of posterior distributions
+mcmcMatT = as.matrix(codaSamplesT, chains=TRUE)
+
+hist(mcmcMatT[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatT[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatT[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatT[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatT[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatT[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatT[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesT))
+
+#DIC analyses
+dicT1= runJagsOutT$dic[1]
+dicT1
+```
+
+```{r}
+# Data for doing condition
+dataD <- newdataQ2D
+yD <- newdataQ2D$Enjoy
+xD <- as.matrix(newdataQ2D[,2:6])
+NxD <- ncol(xD)
+NtotalD <- length(yD)
+
+#Bayesian Adaptive Sampling for Bayesian Model Averaging and Variable Selection in Linear Models
+#Sample without replacement from a posterior distribution on models --> does NOT work yet :(
+model2bas <- bas.lm(yD~LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV,
+                    data = newdataQ2D,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model2bas)
+
+#Correlation between predictors
+image(1:NxD,1:NxD,abs(cor(xD)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxD,colnames(xD),las=2)
+axis(2,1:NxD,colnames(xD),las=2)
+
+```
+
+## Bayesian multiple regression
+```{r}
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+
+}"
+
+
+writeLines( model_string , con="model_string.txt" )
+
+
+#datalist
+dataListD = list(x=xD, y=yD, Ntotal=NtotalD, Nx=NxD)
+
+#run
+runJagsOutD <- run.jags( model="model_string.txt" , 
+                         monitor=parameters , 
+                         data=dataListD ,  
+                         inits=initsList , 
+                         n.chains=nChains ,
+                         adapt=adaptSteps ,
+                         burnin=burnInSteps*1 , 
+                         sample=ceiling(numSavedSteps/nChains)*10,
+                         thin=thinSteps )
+
+codaSamplesD = as.mcmc.list( runJagsOutD )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesD, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesD)
+autocorr.plot(codaSamplesD[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesD)
+
+##graphical inspection of posterior distributions
+mcmcMatD = as.matrix(codaSamplesD, chains=TRUE)
+
+hist(mcmcMatD[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatD[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatD[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatD[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatD[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatD[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatD[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesD))
+
+#DIC analyses
+dicD1= runJagsOutD$dic[1]
+dicD1
+```
+
+### Question 3 ###
+```{r}
+#merge ccte and nation datasets by "country"
+ccte_nation1<-merge(ccte, nation, by = "Country")
+
+# isolate condition 1 . Q3 only looks at thinking
+ccte_nation<-ccte_nation1[ccte_nation1$Condition=="Thinking", ]
+
+#create data matrix
+dataQ3Matrix<-cbind(ccte_nation$Enjoy, ccte_nation$SC0_0, ccte_nation$SC1_0, ccte_nation$Cheat_9, 
+                    ccte_nation$MindWander, ccte_nation$Concentrat, ccte_nation$Country)
+colnames(dataQ3Matrix)<-cbind("Enjoy", "LifeSatisfaction", "Cognitionneed", "MinTV", 
+                              "Mindwander", "Concentration", "Country")
+dataQ3Matrix # problem - saves country as number - but that is ok, is alphabetic
+
+# 1- Brazil
+# 2  Belgium
+# 3 -CostaRica
+# 4  Japan
+# 5 Korea
+# 6 Malaysia
+# 7 Portugal
+# 8 Serbia
+# 9 Turkey
+# 10 Tanzania
+# 11 UAE
+# 12 USA
+
+dataQ3all<-as.data.frame(dataQ3Matrix) #create data frame
+
+#remove missing observations  ### removes missing observations for whole dataframe = all countries, does not have to be done separately now
+dataQ3 <- na.omit(dataQ3all)
+dataQ3
+
+#select country
+
+# Countries
+br<-dataQ3[dataQ3$Country==1, ]     #Brasil
+be<-dataQ3[dataQ3$Country==2, ]     #Belgium
+cr <- dataQ3[dataQ3$Country==3, ]   #Costa Rica
+jap <- dataQ3[dataQ3$Country==4, ]  #Japan
+kor <- dataQ3[dataQ3$Country==5, ]  #Korea
+mal <- dataQ3[dataQ3$Country==6, ]  #Malaysia
+por <- dataQ3[dataQ3$Country==7, ]  #Portugal
+ser <- dataQ3[dataQ3$Country==8, ]  #Serbia
+tur <- dataQ3[dataQ3$Country==9, ]  #Turkey --> too much missing values, not making a model out of it
+tan <- dataQ3[dataQ3$Country==10, ] #Tanzania
+uae <- dataQ3[dataQ3$Country==11, ] #UAE
+usa <- dataQ3[dataQ3$Country==12, ] #USA
+
+#defining variables per country
+#Brasil
+Enjoybr = br$Enjoy
+Lifesatisfactionbr = br$LifeSatisfaction
+Cognitionneedbr = br$Cognitionneed
+Mintvbr = br$MinTV
+Mindwanderbr = br$Mindwander
+Concentrationbr = br$Concentration
+
+#Belgium
+Enjoybe = be$Enjoy
+Lifesatisfactionbe = be$LifeSatisfaction
+Cognitionneedbe = be$Cognitionneed
+Mintvbe = be$MinTV
+Mindwanderbe = be$Mindwander
+Concentrationbe = be$Concentration
+
+#Costa Rica
+Enjoycr = cr$Enjoy
+Lifesatisfactioncr = cr$LifeSatisfaction
+Cognitionneedcr = cr$Cognitionneed
+Mintvcr = cr$MinTV
+Mindwandercr = cr$Mindwander
+Concentrationcr = cr$Concentration
+
+#Japan
+Enjoyjap = jap$Enjoy
+Lifesatisfactionjap = jap$LifeSatisfaction
+Cognitionneedjap = jap$Cognitionneed
+Mintvjap = jap$MinTV
+Mindwanderjap = jap$Mindwander
+Concentrationjap = jap$Concentration
+
+#Korea
+Enjoykor = kor$Enjoy
+Lifesatisfactionkor = kor$LifeSatisfaction
+Cognitionneedkor = kor$Cognitionneed
+Mintvkor = kor$MinTV
+Mindwanderkor = kor$Mindwander
+Concentrationkor = kor$Concentration
+
+#Malaysia
+Enjoymal = mal$Enjoy
+Lifesatisfactionmal = mal$LifeSatisfaction
+Cognitionneedmal = mal$Cognitionneed
+Mintvmal= mal$MinTV
+Mindwandermal = mal$Mindwander
+Concentrationmal = mal$Concentration
+
+#Portugal
+Enjoypor = por$Enjoy
+Lifesatisfactionpor = por$LifeSatisfaction
+Cognitionneedpor = por$Cognitionneed
+Mintvpor = por$MinTV
+Mindwanderpor = por$Mindwander
+Concentrationpor = por$Concentration
+
+#Serbia
+Enjoyser = ser$Enjoy
+Lifesatisfactionser = ser$LifeSatisfaction
+Cognitionneedser = ser$Cognitionneed
+Mintvser = ser$MinTV
+Mindwanderser = ser$Mindwander
+Concentrationser = ser$Concentration
+
+#Tanzania
+Enjoytan = tan$Enjoy
+Lifesatisfactiontan = tan$LifeSatisfaction
+Cognitionneedtan = tan$Cognitionneed
+Mintvtan = tan$MinTV
+Mindwandertan = tan$Mindwander
+Concentrationtan = tan$Concentration
+
+#Turkey will not be used --> no observation due to missing values
+
+#UAE
+Enjoyuae = uae$Enjoy
+Lifesatisfactionuae = uae$LifeSatisfaction
+Cognitionneeduae = uae$Cognitionneed
+Mintvuae = uae$MinTV
+Mindwanderuae = uae$Mindwander
+Concentrationuae = uae$Concentration
+
+#USA
+Enjoyusa = usa$Enjoy
+Lifesatisfactionusa = usa$LifeSatisfaction
+Cognitionneedusa = usa$Cognitionneed
+Mintvusa = usa$MinTV
+Mindwanderusa = usa$Mindwander
+Concentrationusa = usa$Concentration
+```
+
+## Analysis per country 
+# We will first conduct Bayesian Adaptive Sampling for Bayesian Model Averaging and Variable Selection in Linear Models
+# Sample without replacement from a posterior distribution on models
+# According to these results we will chose the model with the highest R^2 and adapt the predictors per country according to this
+```{r}
+#Brasil
+DataQ3Br <- data.frame("Enjoy" = Enjoybr, "Life Satisfaction" = Lifesatisfactionbr, "Cognitionneed" = Cognitionneedbr, 
+                       "Concentration" = Concentrationbr)
+
+# Data for Brasil 
+databr <- DataQ3Br
+ybr <- Enjoybr
+xbr <- as.matrix(DataQ3Br[,2:4])
+Nxbr <- ncol(xbr)
+Ntotalbr <- length(ybr)
+
+#Brasil
+modelbasbr <- bas.lm(ybr~(Lifesatisfactionbr + Concentrationbr + Mindwanderbr + Cognitionneedbr + Mintvbr),
+                     data = DataQ3Br,
+                     method = "BAS",
+                     prior = "JZS",
+                     bestmodel = NULL,
+                     include.always = ~1,
+                     modelprior = uniform())
+summary(modelbasbr) # R^2 (= .1358) highest for model 4 (predictors: lifesatisfaction, cognitionneed, concentration)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0","beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Brasil
+dataListbr = list(x=xbr, y=ybr, Ntotal=Ntotalbr, Nx=Nxbr)
+
+#run
+runJagsOutbr <- run.jags( model="model_string.txt" , 
+                         monitor=parameters , 
+                         data=dataListbr ,  
+                         inits=initsList , 
+                         n.chains=nChains ,
+                         adapt=adaptSteps ,
+                         burnin=burnInSteps*1 , 
+                         sample=ceiling(numSavedSteps/nChains)*10,
+                         thin=thinSteps )
+
+codaSamplesbr = as.mcmc.list( runJagsOutbr )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesbr, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesbr)
+autocorr.plot(codaSamplesbr[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesbr)
+
+##graphical inspection of posterior distributions
+mcmcMatbr = as.matrix(codaSamplesbr, chains=TRUE)
+
+hist(mcmcMatbr[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatbr[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatbr[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatbr[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatbr[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesbr))
+
+#DIC analyses
+dic1= runJagsOutbr$dic[1]
+dic1
+```
+
+```{r}
+## Analysis per country 
+
+#Belgium
+DataQ3Be <- data.frame("Enjoy" = Enjoybe, "Life Satisfaction" = Lifesatisfactionbe, "Cognitionneed" = Cognitionneedbe, 
+                       "Concentration" = Concentrationbe)
+
+# Data for Belgium 
+databe <- DataQ3Be
+ybe <- Enjoybe
+xbe <- as.matrix(DataQ3Be[,1:4])
+Nxbe <- ncol(xbe)
+Ntotalbe <- length(ybe)
+
+#Belgium
+modelbasbe <- bas.lm(ybe~(Lifesatisfactionbe + Concentrationbe + Mindwanderbe + Cognitionneedbe + Mintvbe),
+                     data = DataQ3Be,
+                     method = "BAS",
+                     prior = "JZS",
+                     bestmodel = NULL,
+                     include.always = ~1,
+                     modelprior = uniform())
+summary(modelbasbe)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+
+#datalist Belgium
+dataListbe = list(x=xbe, y=ybe, Ntotal=Ntotalbe, Nx=Nxbe)
+
+#run
+runJagsOutbe <- run.jags( model="model_string.txt" , 
+                          monitor=parameters , 
+                          data=dataListbe ,  
+                          inits=initsList , 
+                          n.chains=nChains ,
+                          adapt=adaptSteps ,
+                          burnin=burnInSteps*1 , 
+                          sample=ceiling(numSavedSteps/nChains)*10,
+                          thin=thinSteps )
+
+codaSamplesbe = as.mcmc.list( runJagsOutbe )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesbe, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesbe)
+autocorr.plot(codaSamplesbe[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesbe)
+
+##graphical inspection of posterior distributions
+mcmcMatbe = as.matrix(codaSamplesbe, chains=TRUE)
+
+hist(mcmcMatbe[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatbe[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatbe[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatbe[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatbe[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesbe))
+
+#DIC analyses
+dic2= runJagsOutbe$dic[1]
+dic2
+```
+
+```{r}
+## Analysis per country 
+
+#Costa Rica
+DataQ3Cr <- data.frame("Enjoy" = Enjoycr, "Cognitionneed" = Cognitionneedcr, 
+                       "Concentration" = Concentrationcr)
+
+# Data for Costa Rica
+datacr <- DataQ3Cr
+ycr <- Enjoycr
+xcr <- as.matrix(DataQ3Cr[,2:3])
+Nxcr <- ncol(xcr)
+Ntotalcr <- length(ycr)
+
+
+#Costa Rica
+modelbascr <- bas.lm(ycr~(Lifesatisfactioncr + Concentrationcr + Mindwandercr + Cognitionneedcr + Mintvcr),
+                     data = DataQ3Cr,
+                     method = "BAS",
+                     prior = "JZS",
+                     bestmodel = NULL,
+                     include.always = ~1,
+                     modelprior = uniform())
+summary(modelbascr) # R^2 (=.1328) was the highest for model 3 (predictors: concentration & cognitionneed)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma","dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Costa Rica
+dataListcr = list(x=xcr, y=ycr, Ntotal=Ntotalcr, Nx=Nxcr)
+
+#run
+runJagsOutcr <- run.jags( model="model_string.txt" , 
+                          monitor=parameters , 
+                          data=dataListcr ,  
+                          inits=initsList , 
+                          n.chains=nChains ,
+                          adapt=adaptSteps ,
+                          burnin=burnInSteps*1 , 
+                          sample=ceiling(numSavedSteps/nChains)*10,
+                          thin=thinSteps )
+
+codaSamplescr = as.mcmc.list( runJagsOutcr)
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplescr, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplescr)
+autocorr.plot(codaSamplescr[[1]][,1:3], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplescr)
+
+##graphical inspection of posterior distributions
+mcmcMatcr = as.matrix(codaSamplescr, chains=TRUE)
+
+hist(mcmcMatcr[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatcr[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatcr[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatcr[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplescr))
+
+#DIC analyses
+dic3= runJagsOutcr$dic[1]
+dic3
+```
+
+```{r}
+## Analysis per country 
+
+#Japan
+DataQ3Jap <- data.frame("Enjoy" = Enjoyjap, "Life Satisfaction" = Lifesatisfactionjap, "Cognitionneed" = Cognitionneedjap, 
+                       "Concentration" = Concentrationjap)
+
+# Data for Japan 
+datajap <- DataQ3Jap
+yjap <- Enjoyjap
+xjap <- as.matrix(DataQ3Jap[,2:4])
+Nxjap <- ncol(xjap)
+Ntotaljap <- length(yjap)
+
+#Japan
+modelbasjap <- bas.lm(yjap~(Lifesatisfactionjap + Concentrationjap + Mindwanderjap + Cognitionneedjap + Mintvjap),
+                      data = DataQ3Jap,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbasjap) # Highest R^2 (=.1229) for model 3 (predictors: lifesatisfaction, concentration & cognitionneed)
+
+
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Japan
+dataListjap = list(x=xjap, y=yjap, Ntotal=Ntotaljap, Nx=Nxjap)
+
+#run
+runJagsOutjap <- run.jags( model="model_string.txt" , 
+                          monitor=parameters , 
+                          data=dataListjap ,  
+                          inits=initsList , 
+                          n.chains=nChains ,
+                          adapt=adaptSteps ,
+                          burnin=burnInSteps*1 , 
+                          sample=ceiling(numSavedSteps/nChains)*10,
+                          thin=thinSteps )
+
+codaSamplesjap = as.mcmc.list( runJagsOutjap )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesjap, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesjap)
+autocorr.plot(codaSamplesjap[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesjap)
+
+##graphical inspection of posterior distributions
+mcmcMatjap = as.matrix(codaSamplesjap, chains=TRUE)
+
+hist(mcmcMatjap[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatjap[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatjap[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatjap[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatjap[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesjap))
+
+#DIC analyses
+dic4= runJagsOutjap$dic[1]
+dic4
+```
+
+```{r}
+## Analysis per country 
+
+#Korea
+DataQ3Kor <- data.frame("Enjoy" = Enjoykor, "Cognitionneed" = Cognitionneedkor, 
+                       "MinTV" = Mintvkor, "Mindwander" = Mindwanderkor, "Concentration" = Concentrationkor)
+
+# Data for Korea
+datakor <- DataQ3Kor
+ykor <- Enjoykor
+xkor <- as.matrix(DataQ3Kor[,2:5])
+Nxkor <- ncol(xkor)
+Ntotalkor <- length(ykor)
+
+#Korea
+modelbaskor <- bas.lm(ykor~(Lifesatisfactionkor + Concentrationkor + Mindwanderkor + Cognitionneedkor + Mintvkor),
+                      data = DataQ3Kor,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbaskor) # Highest R^2 for model 4 (predictors: concentration, mindwander, cognitionneed and mintv)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Korea
+dataListkor = list(x=xkor, y=ykor, Ntotal=Ntotalkor, Nx=Nxkor)
+
+#run
+runJagsOutkor <- run.jags( model="model_string.txt" , 
+                          monitor=parameters , 
+                          data=dataListkor ,  
+                          inits=initsList , 
+                          n.chains=nChains ,
+                          adapt=adaptSteps ,
+                          burnin=burnInSteps*1 , 
+                          sample=ceiling(numSavedSteps/nChains)*10,
+                          thin=thinSteps )
+
+codaSampleskor = as.mcmc.list( runJagsOutkor )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSampleskor, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSampleskor)
+autocorr.plot(codaSampleskor[[1]][,1:5], ask=FALSE)
+
+#inspect posterior
+summary(codaSampleskor)
+
+##graphical inspection of posterior distributions
+mcmcMatkor = as.matrix(codaSampleskor, chains=TRUE)
+
+hist(mcmcMatkor[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatkor[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatkor[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatkor[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatkor[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatkor[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSampleskor))
+
+#DIC analyses
+dic5= runJagsOutkor$dic[1]
+dic5
+```
+
+```{r}
+## Analysis per country 
+
+#Malaysia
+DataQ3Mal <- data.frame("Enjoy" = Enjoymal, "Cognitionneed" = Cognitionneedmal, 
+                        "Mindwander" = Mindwandermal, "Concentration" = Concentrationmal)
+
+# Data for Malaysia
+datamal <- DataQ3Mal
+ymal <- Enjoymal
+xmal <- as.matrix(DataQ3Mal[,2:4])
+Nxmal <- ncol(xmal)
+Ntotalmal <- length(ymal)
+
+#Malaysia
+modelbasmal <- bas.lm(ymal~(Lifesatisfactionmal + Concentrationmal + Mindwandermal + Cognitionneedmal + Mintvmal),
+                      data = DataQ3Mal,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbasmal) # Highest R^2 (=.1541) for model 2 (predictors: concentration, mindwander and cognition)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Malaysia
+dataListmal = list(x=xmal, y=ymal, Ntotal=Ntotalmal, Nx=Nxmal)
+
+#run
+runJagsOutmal <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListmal ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplesmal = as.mcmc.list( runJagsOutmal )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesmal, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesmal)
+autocorr.plot(codaSamplesmal[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesmal)
+
+##graphical inspection of posterior distributions
+mcmcMatmal = as.matrix(codaSamplesmal, chains=TRUE)
+
+hist(mcmcMatmal[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatmal[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatmal[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatmal[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatmal[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesmal))
+
+#DIC analyses
+dic6= runJagsOutmal$dic[1]
+dic6
+```
+
+```{r}
+## Analysis per country 
+
+#Portugal
+DataQ3Por <- data.frame("Enjoy" = Enjoypor, 
+                        "MinTV" = Mintvpor, "Mindwander" = Mindwanderpor, "Concentration" = Concentrationpor)
+
+# Data for Portugal
+datapor <- DataQ3Por
+ypor <- Enjoypor
+xpor <- as.matrix(DataQ3Por[,2:4])
+Nxpor <- ncol(xpor)
+Ntotalpor <- length(ypor)
+
+#Portugal
+modelbaspor <- bas.lm(ypor~(Lifesatisfactionpor + Concentrationpor + Mindwanderpor + Cognitionneedpor + Mintvpor),
+                      data = DataQ3Por,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbaspor) # Highest R^2 (=.1715) for model 5 (predictors: concentration, mindwander and mintv)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Portugal
+dataListpor = list(x=xpor, y=ypor, Ntotal=Ntotalpor, Nx=Nxpor)
+
+#run
+runJagsOutpor <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListpor ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplespor = as.mcmc.list( runJagsOutpor )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplespor, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplespor)
+autocorr.plot(codaSamplespor[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplespor)
+
+##graphical inspection of posterior distributions
+mcmcMatpor = as.matrix(codaSamplespor, chains=TRUE)
+
+hist(mcmcMatpor[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatpor[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatpor[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatpor[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatpor[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplespor))
+
+#DIC analyses
+dic7= runJagsOutpor$dic[1]
+dic7
+```
+
+```{r}
+## Analysis per country 
+
+#Serbia
+DataQ3Ser <- data.frame("Enjoy" = Enjoyser, "Cognitionneed" = Cognitionneedser, 
+                        "MinTV" = Mintvser, "Mindwander" = Mindwanderser, "Concentration" = Concentrationser)
+
+# Data for Serbia
+dataser <- DataQ3Ser
+yser <- Enjoyser
+xser <- as.matrix(DataQ3Ser[,2:5])
+Nxser <- ncol(xser)
+Ntotalser <- length(yser)
+
+#Serbia
+modelbasser <- bas.lm(yser~(Lifesatisfactionser + Concentrationser + Mindwanderser + Cognitionneedser + Mintvser),
+                      data = DataQ3Ser,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbasser) # Highest R^2 (=.2011) for model 5 (predictors: concentration, mindwander, cognitionneed and mintv)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Serbia
+dataListser = list(x=xser, y=yser, Ntotal=Ntotalser, Nx=Nxser)
+
+#run
+runJagsOutser <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListser ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplesser = as.mcmc.list( runJagsOutser )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesser, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesser)
+autocorr.plot(codaSamplesser[[1]][,1:5], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesser)
+
+##graphical inspection of posterior distributions
+mcmcMatser = as.matrix(codaSamplesser, chains=TRUE)
+
+hist(mcmcMatser[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatser[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatser[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatser[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatser[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatser[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesser))
+
+#DIC analyses
+dic8= runJagsOutser$dic[1]
+dic8
+```
+
+```{r}
+## Analysis per country 
+
+#Tanzania
+DataQ3Tan <- data.frame("Enjoy" = Enjoytan, "Life Satisfaction" = Lifesatisfactiontan, "Cognitionneed" = Cognitionneedtan, 
+                        "MinTV" = Mintvtan, "Mindwander" = Mindwandertan, "Concentration" = Concentrationtan)
+
+# Data for Tanzania
+datatan <- DataQ3Tan
+ytan <- Enjoytan
+xtan <- as.matrix(DataQ3Tan[,2:6])
+Nxtan <- ncol(xtan)
+Ntotaltan <- length(ytan)
+
+#Tanzania
+modelbastan <- bas.lm(ytan~(Lifesatisfactiontan + Concentrationtan + Mindwandertan + Cognitionneedtan + Mintvtan),
+                      data = DataQ3Tan,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbastan) # Highest R^2 (=.2015) for model 5 (all predictors)
+```
+
+```{r}
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist Tanzania
+dataListtan = list(x=xtan, y=ytan, Ntotal=Ntotaltan, Nx=Nxtan)
+
+#run
+runJagsOuttan <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListtan ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplestan = as.mcmc.list( runJagsOuttan )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplestan, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplestan)
+autocorr.plot(codaSamplestan[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplestan)
+
+##graphical inspection of posterior distributions
+mcmcMattan = as.matrix(codaSamplestan, chains=TRUE)
+
+hist(mcmcMattan[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMattan[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMattan[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMattan[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMattan[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMattan[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMattan[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplestan))
+
+#DIC analyses
+dic9= runJagsOuttan$dic[1]
+dic9
+```
+
+```{r}
+## Analysis per country 
+
+#UAE
+DataQ3Uae <- data.frame("Enjoy" = Enjoyuae, "Life Satisfaction" = Lifesatisfactionuae, "Cognitionneed" = Cognitionneeduae, 
+                        "Mindwander" = Mindwanderuae, "Concentration" = Concentrationuae)
+
+# Data for UAE
+datauae <- DataQ3Uae
+yuae <- Enjoyuae
+xuae <- as.matrix(DataQ3Uae[,2:5])
+Nxuae <- ncol(xuae)
+Ntotaluae <- length(yuae)
+
+#UAE
+modelbasuae <- bas.lm(yuae~(Lifesatisfactionuae + Concentrationuae + Mindwanderuae + Cognitionneeduae + Mintvuae),
+                      data = DataQ3Uae,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbasuae) # Highest R^2 (=.2159) for model 3 (predictors: lifesatisfaction, cognitionneed, mindwander, concentration)
+```
+
+```{r}
+## Bayesian multiple regression
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist UAE
+dataListuae = list(x=xuae, y=yuae, Ntotal=Ntotaluae, Nx=Nxuae)
+
+#run
+runJagsOutuae <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListuae ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplesuae = as.mcmc.list( runJagsOutuae )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesuae, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesuae)
+autocorr.plot(codaSamplesuae[[1]][,1:5], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesuae)
+
+##graphical inspection of posterior distributions
+mcmcMatuae = as.matrix(codaSamplesuae, chains=TRUE)
+
+hist(mcmcMatuae[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatuae[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatuae[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatuae[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatuae[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatuae[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesuae))
+
+#DIC analyses
+dic10= runJagsOutuae$dic[1]
+dic10
+```
+
+```{r}
+## Analysis per country 
+
+#USA
+DataQ3Usa <- data.frame("Enjoy" = Enjoyusa, "Cognitionneed" = Cognitionneedusa, 
+                        "MinTV" = Mintvusa, "Concentration" = Concentrationusa)
+
+# Data for USA
+datausa <- DataQ3Usa
+yusa <- Enjoyusa
+xusa <- as.matrix(DataQ3Usa[,2:4])
+Nxusa <- ncol(xusa)
+Ntotalusa <- length(yusa)
+
+#USA
+modelbasusa <- bas.lm(yusa~(Lifesatisfactionusa + Concentrationusa + Mindwanderusa + Cognitionneedusa + Mintvusa),
+                      data = DataQ3Usa,
+                      method = "BAS",
+                      prior = "JZS",
+                      bestmodel = NULL,
+                      include.always = ~1,
+                      modelprior = uniform())
+summary(modelbasusa) #Highest R^2 (=.1573) for model 4 (predictors: concentration, cognitionneed, mintv)
+```
+
+```{r}
+## Bayesian multiple regression
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist USA
+dataListusa = list(x=xusa, y=yusa, Ntotal=Ntotalusa, Nx=Nxusa)
+
+#run
+runJagsOutusa <- run.jags( model="model_string.txt" , 
+                           monitor=parameters , 
+                           data=dataListusa ,  
+                           inits=initsList , 
+                           n.chains=nChains ,
+                           adapt=adaptSteps ,
+                           burnin=burnInSteps*1 , 
+                           sample=ceiling(numSavedSteps/nChains)*10,
+                           thin=thinSteps )
+
+codaSamplesusa = as.mcmc.list( runJagsOutusa )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesusa, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesusa)
+autocorr.plot(codaSamplesusa[[1]][,1:4], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesusa)
+
+##graphical inspection of posterior distributions
+mcmcMatusa = as.matrix(codaSamplesusa, chains=TRUE)
+
+hist(mcmcMatusa[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatusa[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatusa[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatusa[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatusa[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesusa))
+
+#DIC analyses
+dic11= runJagsOutusa$dic[1]
+dic11
+```
+
+
+
+### Question 4 ###
+
+#ARE THERE NATION LEVEL VARIABLES THAT INFLUENCE THE ENJOYMENT OF TIME PERIOD?
+
+Separate analysis by country to inspect effects (GDP may have an influence in Brazil, but not in Belgium - etc.)
+Prepare data set
+
+```{r Preparing data set}
+ccte_nation<-merge(ccte, nation, by = "Country")
+
+#all conditions
+#create data matrix # only country-level variables which do not have missing observations
+dataQ4Matrix<-cbind(ccte_nation$Enjoy, ccte_nation$Country, ccte_nation$PopSize, ccte_nation$PopDensity, ccte_nation$PowerDistance, ccte_nation$Uncertaintyavoidance, ccte_nation$Individualism, ccte_nation$Masculinity, ccte_nation$Condition)
+colnames(dataQ4Matrix)<-cbind("Enjoy", "Country", "PopSize", "PopDens", "PowDist", "UncAv", "Individ", "Masculinity", "Condition")
+
+dataQ4Matrix # saves country as number 
+
+# 1- Brazil
+# 2  Belgium
+# 3 -CostaRica
+# 4  Japan
+# 5 Korea
+# 6 Malaysia
+# 7 Portugal
+# 8 Serbia
+# 10 Tanzania
+# 11 Turkey
+# 12 UAE
+# 13 USA
+
+dataQ4all<-as.data.frame(dataQ4Matrix) #create data frame
+#remove missing observations  ### removes missing observations for whole dataframe = all countries, does not have to be done separately now
+dataQ4 <- na.omit(dataQ4all)
+dataQ4
+```
+
+For possible further analysis - subsetting data by country (thinking condition)
+
+```{r Q4 by country, echo=FALSE}
+
+#select country
+br<-dataQ4[dataQ4$Country==1, ] 
+be<-dataQ4[dataQ4$Country==2, ]  #Belgium
+cr<-dataQ4[dataQ4$Country==3, ]  #CostaRica
+jp<-dataQ4[dataQ4$Country==4, ]  #Japan
+
+#etc-
+# code can be adapted to look at the effect of country-level variables on enjoyment of thinking or doing condition in individual countries. 
+
+```
+
+# Analysis for all countries --- thinking condition
+```{r}
+# Data for all countries - thinking condition
+
+#only use thinking condition
+dataQ4T<-dataQ4[dataQ4$Condition==1, ]
+
+data <- dataQ4T
+y <- dataQ4T$Enjoy #column 1
+x <- as.matrix(dataQ4T[,3:8]) #column 2 is country indicator - so will ignore in data interpretation/analysis # column 9 is condition- not needed
+Nx <- ncol(x)
+Ntotal <- length(y)
+
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=x, y=y, Ntotal=Ntotal, Nx=Nx)
+
+#run
+runJagsOut <- run.jags( model="model_string.txt" , 
+                         monitor=parameters , 
+                         data=dataList ,  
+                         inits=initsList , 
+                         n.chains=nChains ,
+                         adapt=adaptSteps ,
+                         burnin=burnInSteps*1 , 
+                         sample=ceiling(numSavedSteps/nChains)*10,
+                         thin=thinSteps )
+
+codaSamples = as.mcmc.list( runJagsOut )
+```
+```{r}
+#check convergence
+gelman.diag(codaSamples, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamples)
+autocorr.plot(codaSamples[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamples)
+
+##graphical inspection of posterior distributions
+mcmcMatQ4T = as.matrix(codaSamples, chains=TRUE)
+
+hist(mcmcMatQ4T[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatQ4T[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatQ4T[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatQ4T[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatQ4T[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatQ4T[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatQ4T[,"beta[6]"],xlab=expression(beta6),ylab="posterior",main="beta6")
+hist(mcmcMatQ4T[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamples))
+
+#DIC analyses
+dicQ41= runJagsOut$dic[1]
+dicQ41
+```
+
+##### Analysis for doing condition
+```{r}
+# Data for all countries - doing condition
+
+#only use thinking condition
+dataQ4D<-dataQ4[dataQ4$Condition==2, ]
+
+data <- dataQ4D
+y <- dataQ4D$Enjoy #column 1
+x <- as.matrix(dataQ4D[,3:8]) #column 2 is country indicator - so will ignore in data interpretation/analysis # column 9 is condition- not needed
+Nx <- ncol(x)
+Ntotal <- length(y)
+
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(0,100)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(0,100)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+  
+
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=x, y=y, Ntotal=Ntotal, Nx=Nx)
+
+#run
+runJagsOut <- run.jags( model="model_string.txt" , 
+                         monitor=parameters , 
+                         data=dataList ,  
+                         inits=initsList , 
+                         n.chains=nChains ,
+                         adapt=adaptSteps ,
+                         burnin=burnInSteps*1 , 
+                         sample=ceiling(numSavedSteps/nChains)*10,
+                         thin=thinSteps )
+
+codaSamples = as.mcmc.list( runJagsOut )
+```
+```{r}
+#check convergence
+gelman.diag(codaSamples, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamples)
+autocorr.plot(codaSamples[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamples)
+
+##graphical inspection of posterior distributions
+mcmcMatQ4D = as.matrix(codaSamples, chains=TRUE)
+
+hist(mcmcMatQ4D[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatQ4D[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatQ4D[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatQ4D[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatQ4D[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatQ4D[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatQ4D[,"beta[6]"],xlab=expression(beta6),ylab="posterior",main="beta6")
+hist(mcmcMatQ4D[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamples))
+
+#DIC analyses
+dicQ4D1= runJagsOut$dic[1]
+dicQ4D1
+```
+
+### Question 5 ###
+```{r}
+dataQ5<- ccte %>% dplyr::select(Education,Gender,Concentrat)
+dataQ5<- dataQ5 %>% na.omit()
+
+boxplot(dataQ5$Concentrat ~ dataQ5$Education, data = dataQ5, xlab = "Educationlevel", names=c("Less than High School ", "High School/GED","Some College", "2-year College Degree", "4-year College Degree", "Post-College Advanced degree"), ylab = "Concentration", main = "Concentration by Educationlevel" )
+boxplot(dataQ5$Concentrat ~ dataQ5$Gender, data = dataQ5, xlab = "Gender", names=c("Male","Female","Other/Prefer not to say"), ylab = "Concentration", main = "Concentration by Gender" )
+```
+
+```{r}
+y = dataQ5$Concentrat
+x = cbind(dataQ5$Gender, dataQ5$Education )
+Ntotal = dim(x)[1]
+Nx = dim(x)[2]
+
+## prepare the data for JAGS
+zdata = list(
+  x = x ,
+  y = y ,
+  Nx = Nx ,
+  Ntotal = Ntotal 
+)
+
+myinits=NULL
+parameters = c( "beta0" ,  "beta" ,  "sigma", "dic")
+out <- run.jags( model="question5.txt" , monitor=parameters , data=zdata,  inits=myinits , 
+                 n.chains=3,  adapt=1000, burnin=1000,  sample=10000) 
+out
+```
+
+```{r}
+# Statistics of parameters
+outcoda=as.mcmc.list(out)
+statistics = round(cbind(as.data.frame(summary(outcoda)[1])[,1:2],as.data.frame(summary(outcoda)[2])[,-(2:4)]),2)
+kable(statistics)
+
+# Check the convergence
+gelman.diag(as.mcmc.list(out), multivariate=TRUE)
+
+## trace plots
+plot(outcoda[,c("beta0","beta[1]","beta[2]","sigma")])
+
+## autocorrelation
+autocorr.plot(outcoda[[1]][,1:4])
+
+# Model fitness
+modDIC = out$dic[1]
+modDIC
+
+# visualize posteriors
+hist(combine.mcmc(out)[,1],xlab="beta0",ylab="posterior",main=paste0("95% CI from ",statistics$quantiles.2.5.[1]," to ",statistics$quantiles.97.5.[1]))
+segments(x0=statistics$quantiles.2.5.[1],y0=-15,x1=statistics$quantiles.97.5.[1],y1=-15,lwd=3,col="red")
+hist(combine.mcmc(out)[,1],xlab="beta[1]",ylab="posterior",main=paste0("95% CI from ",statistics$quantiles.2.5.[1]," to ",statistics$quantiles.97.5.[1]))
+segments(x0=statistics$quantiles.2.5.[1],y0=-15,x1=statistics$quantiles.97.5.[1],y1=-15,lwd=3,col="red")
+hist(combine.mcmc(out)[,1],xlab="beta[2]",ylab="posterior",main=paste0("95% CI from ",statistics$quantiles.2.5.[1]," to ",statistics$quantiles.97.5.[1]))
+segments(x0=statistics$quantiles.2.5.[1],y0=-15,x1=statistics$quantiles.97.5.[1],y1=-15,lwd=3,col="red")
+hist(combine.mcmc(out)[,1],xlab="sigma",ylab="posterior",main=paste0("95% CI from ",statistics$quantiles.2.5.[1]," to ",statistics$quantiles.97.5.[1]))
+segments(x0=statistics$quantiles.2.5.[1],y0=-15,x1=statistics$quantiles.97.5.[1],y1=-15,lwd=3,col="red")
+```
+# sensitivity check 2
+
+```{r checking sensitivity2,cache=TRUE,echo=FALSE,include = TRUE,message=FALSE,warning=FALSE}
+
+#checking sensitivty for question 5 by changing priors in the model file
+
+x= cbind(dataQ5$Gender, dataQ5$Education)
+
+data_check2 = list(
+  x= x,
+  y = soepdata$lifeSat,
+  s = pp,
+  Ntotal = Ntotal ,
+  Nsubj = N,
+  Omega = diag(c(1,1,1)), 
+  mean = c(0,0,0),
+  df=4, 
+  prec = diag(c(1.0E-6,1.0E-6,1.0E-6)), 
+  Nx = dim(x)[2] ,
+  NxO = dim(x)[2]-2
+)
+
+parameters = c( "beta0", "beta", "sigma","dic")
+
+outsencheck <- run.jags( model="model for sensitivity analysis 2.txt" , monitor=parameters , data=data_check2, inits=inits, n.chains=n.chains, adapt=100, burnin=100,  sample=100)
+
+# Statistics of parameters
+outcodacheck2=as.mcmc.list(outcheck2)
+modcheck2statistics = round(cbind(as.data.frame(summary(outcodacheck2)[1])[,1:2],as.data.frame(summary(outcodacheck2)[2])[,-(2:4)]),2)
+kable(modcheck2statistics)
+
+# Check the convergence
+gelman.diag(as.mcmc.list(outcheck2), multivariate=TRUE)
+## trace plots
+plot(outcodacheck2[,c("betamu[1]","betamu[2]","betamu[3]")])
+plot(outcodacheck2[,c("betax[1]","betax[2]")])
+plot(outcodacheck2[,c("betax[3]","sigma")])
+
+## autocorrelation
+autocorr.plot(outcodacheck2[[1]][,1:7])
+
+## Effective sample size
+effectiveSize(outcodacheck2)
+# Model fitness
+modcheck2DIC = outcheck2$dic[1]
+modcheck2DIC
+```
+
+
+
+#### Sensitivity Analysis for Question 2, Condition: Thinking ###
+
+"Which factors influence how much the participants enjoyed the 12 minutes in the doing and in the
+thinking condition?"
+
+Choice of priors:
+- normal distribution (dnorm(1,100))
+- student's t-distribution dnorm(1,100,1272)
+- uniform distribution (dunif(0.1,1))
+- flat prior (dnorm(1,1))
+
+Whilst our initial model with a prior distribution chose at dnorm(0,100) converged well, its posterior results are not robust to the choice of prior. In the bar charts below, it can be seen that whilst the posterior distributions and estimates over the betas vary especially when comparing the normal/t-distribution prior with the posterior distribution obtained with a uniform prior. 
+
+```{r echo=FALSE}
+#rename variables for thinking condition
+Condition <- ccte$Condition
+EnjoymentT <- ccte$Enjoy[Condition=="Thinking"]
+BoringT <- ccte$Boring[Condition=="Thinking"]
+EntertainT <- ccte$Entertain[Condition=="Thinking"]
+ConcentrationT = ccte$Concentrat[Condition=="Thinking"]
+CognitionneedT = ccte$SC1_0[Condition=="Thinking"]
+LifeSatisfactionT = ccte$SC0_0[Condition=="Thinking"]
+MinTVT = ccte$Cheat_9[Condition=="Thinking"]
+MindwanderT = ccte$MindWander[Condition=="Thinking"]
+
+#re-order boring
+BoringreorderT <- as.numeric(recode(BoringT, `1` = "9", `2` = "8", `3` = "7", `4` = "6", `5` = "5", `6` = "4", `7` = "3", `8` = "2", `9` = "1"))
+
+#cronbach's alpha
+datasetcronbach=data.frame(BoringreorderT, EnjoymentT, EntertainT)
+psych::alpha(datasetcronbach)
+
+#create variable of enjoy
+EnjoyT = 1/3 * BoringreorderT + 1/3 * EnjoymentT + 1/3 * EntertainT
+
+#create dataframe
+dataQ2T <- data.frame("Enjoy" = EnjoyT, "LifeSatisfaction" = LifeSatisfactionT, "Concentration" = ConcentrationT, "Mindwander" = MindwanderT, "Cognitionneed" = CognitionneedT, "MinTV" = MinTVT)
+
+#delete missing values
+newdataQ2T <- na.omit(dataQ2T)
+```
+
+**Normal distribution: prior dnorm()**
+```{r Normal prior, echo=FALSE}
+# Data for thinking condition
+dataT <- newdataQ2T
+yT <- newdataQ2T$Enjoy
+xT <- as.matrix(newdataQ2T[,2:6])
+NxT <- ncol(xT)
+NtotalT <- length(yT)
+
+#Sample without replacement from a posterior distribution on models
+
+model1bas <- bas.lm(yT~(LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV),
+                    data = dataT,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model1bas)
+
+#Correlation between predictors
+image(1:NxT,1:NxT,abs(cor(xT)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxT,colnames(xT),las=2)
+axis(2,1:NxT,colnames(xT),las=2)
+
+## Bayesian multiple regression
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dunif(0.1,1)
+  for(j in 1:Nx){
+    beta[j] ~ dunif(0.1,1)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=xT, y=yT, Ntotal=NtotalT, Nx=NxT)
+
+#run
+runJagsOutT <- run.jags( model="model_string.txt" , 
+                        monitor=parameters , 
+                        data=dataList ,  
+                        inits=initsList , 
+                        n.chains=nChains ,
+                        adapt=adaptSteps ,
+                        burnin=burnInSteps*1 , 
+                        sample=ceiling(numSavedSteps/nChains)*10,
+                        thin=thinSteps )
+
+codaSamplesT = as.mcmc.list( runJagsOutT )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesT, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesT)
+autocorr.plot(codaSamplesT[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesT)
+
+##graphical inspection of posterior distributions
+mcmcMatsenT = as.matrix(codaSamplesT, chains=TRUE)
+
+hist(mcmcMatsenT[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatsenT[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatsenT[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatsenT[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatsenT[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatsenT[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatsenT[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesT))
+
+#DIC analyses
+dicsen1= runJagsOutT$dic[1]
+dicsen1
+```
+
+
+```{r}
+# Data for thinking condition - prior 2, data T2
+dataT2 <- newdataQ2T
+yT <- newdataQ2T$Enjoy
+xT <- as.matrix(newdataQ2T[,2:6])
+NxT <- ncol(xT)
+NtotalT <- length(yT)
+
+#Sample without replacement from a posterior distribution on models
+
+mode21bas <- bas.lm(yT~(LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV),
+                    data = dataT2,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model1bas)
+
+#Correlation between predictors
+image(1:NxT,1:NxT,abs(cor(xT)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxT,colnames(xT),las=2)
+axis(2,1:NxT,colnames(xT),las=2)
+
+
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dunif(0.1,1)
+  for(j in 1:Nx){
+    beta[j] ~ dunif(0.1,1)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=xT, y=yT, Ntotal=NtotalT, Nx=NxT)
+
+#run
+runJagsOutT <- run.jags( model="model_string.txt" , 
+                        monitor=parameters , 
+                        data=dataList ,  
+                        inits=initsList , 
+                        n.chains=nChains ,
+                        adapt=adaptSteps ,
+                        burnin=burnInSteps*1 , 
+                        sample=ceiling(numSavedSteps/nChains)*10,
+                        thin=thinSteps )
+
+codaSamplesT2 = as.mcmc.list( runJagsOutT )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesT2, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesT2)
+autocorr.plot(codaSamplesT2[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesT2)
+
+##graphical inspection of posterior distributions
+mcmcMatsenT2 = as.matrix(codaSamplesT2, chains=TRUE)
+
+hist(mcmcMatsenT2[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatsenT2[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatsenT2[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatsenT2[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatsenT2[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatsenT2[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatsenT2[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesT2))
+
+#DIC analyses
+dicsen2= runJagsOutT$dic[1]
+dicsen2
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+#Flat prior (dnorm(1,1))
+
+```{r}
+# Data for thinking condition - prior 3, data T3
+dataT3 <- newdataQ2T
+yT <- newdataQ2T$Enjoy
+xT <- as.matrix(newdataQ2T[,2:6])
+NxT <- ncol(xT)
+NtotalT <- length(yT)
+
+#Sample without replacement from a posterior distribution on models
+
+mode21bas <- bas.lm(yT~(LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV),
+                    data = dataT3,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model1bas)
+
+#Correlation between predictors
+image(1:NxT,1:NxT,abs(cor(xT)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxT,colnames(xT),las=2)
+axis(2,1:NxT,colnames(xT),las=2)
+
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dnorm(1,1)
+  for(j in 1:Nx){
+    beta[j] ~ dnorm(1,1)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=xT, y=yT, Ntotal=NtotalT, Nx=NxT)
+
+#run
+runJagsOutT <- run.jags( model="model_string.txt" , 
+                        monitor=parameters , 
+                        data=dataList ,  
+                        inits=initsList , 
+                        n.chains=nChains ,
+                        adapt=adaptSteps ,
+                        burnin=burnInSteps*1 , 
+                        sample=ceiling(numSavedSteps/nChains)*10,
+                        thin=thinSteps )
+
+codaSamplesT3 = as.mcmc.list( runJagsOutT )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesT3, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesT3)
+autocorr.plot(codaSamplesT3[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesT3)
+
+##graphical inspection of posterior distributions
+mcmcMatsenT3 = as.matrix(codaSamplesT3, chains=TRUE)
+
+hist(mcmcMatsenT3[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatsenT3[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatsenT3[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatsenT3[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatsenT3[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatsenT3[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatsenT3[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesT3))
+
+#DIC analyses
+dicsen3= runJagsOutT$dic[1]
+dicsen3
+```
+
+```{r}
+# Data for thinking condition - prior 4, data T4
+dataT4 <- newdataQ2T
+yT <- newdataQ2T$Enjoy
+xT <- as.matrix(newdataQ2T[,2:6])
+NxT <- ncol(xT)
+NtotalT <- length(yT)
+
+#Sample without replacement from a posterior distribution on models
+
+mode21bas <- bas.lm(yT~(LifeSatisfaction + Concentration + Mindwander + Cognitionneed + MinTV),
+                    data = dataT4,
+                    method = "BAS",
+                    prior = "JZS",
+                    bestmodel = NULL,
+                    include.always = ~1,
+                    modelprior = uniform())
+summary(model1bas)
+
+#Correlation between predictors
+image(1:NxT,1:NxT,abs(cor(xT)),
+      xlab="",ylab="",main="Correlation between predictors",
+      axes=FALSE,col=gray(1-seq(0,1,.01)))
+axis(1,1:NxT,colnames(xT),las=2)
+axis(2,1:NxT,colnames(xT),las=2)
+
+## Bayesian multiple regression
+
+#bookkeeping
+numSavedSteps = 2000
+thinSteps=1
+adaptSteps = 1000  # Number of steps to "tune" the samplers
+burnInSteps = 2000
+nChains = 3 
+initsList = NULL
+
+parameters = c("beta0", "beta", "sigma", "dic")
+
+model_string <- "model{
+
+  # Likelihood
+  for(i in 1:Ntotal){
+    y[i]   ~ dnorm(mu[i],inv.var)
+    mu[i] <- beta0 + sum (beta[1:Nx] * x[i,1:Nx] )
+  }
+
+  # Prior for beta
+  beta0 ~ dt(0,100,1272)
+  for(j in 1:Nx){
+    beta[j] ~ dt(0,100,1271)
+  }
+
+  # Prior for the inverse variance
+  inv.var   ~ dgamma(0.01, 0.01)
+  sigma     <- 1/sqrt(inv.var)
+}"
+
+writeLines( model_string , con="model_string.txt" )
+
+#datalist
+dataList = list(x=xT, y=yT, Ntotal=NtotalT, Nx=NxT)
+
+#run
+runJagsOutT <- run.jags( model="model_string.txt" , 
+                        monitor=parameters , 
+                        data=dataList ,  
+                        inits=initsList , 
+                        n.chains=nChains ,
+                        adapt=adaptSteps ,
+                        burnin=burnInSteps*1 , 
+                        sample=ceiling(numSavedSteps/nChains)*10,
+                        thin=thinSteps )
+
+codaSamplesT4 = as.mcmc.list( runJagsOutT )
+```
+
+```{r}
+#check convergence
+gelman.diag(codaSamplesT4, multivariate=FALSE)
+
+##graphical
+gelman.plot(codaSamplesT4)
+autocorr.plot(codaSamplesT4[[1]][,1:6], ask=FALSE)
+
+#inspect posterior
+summary(codaSamplesT4)
+
+##graphical inspection of posterior distributions
+mcmcMatsenT4 = as.matrix(codaSamplesT4, chains=TRUE)
+
+hist(mcmcMatsenT4[,"beta0"],xlab=expression(beta0),ylab="posterior",main="beta0")
+hist(mcmcMatsenT4[,"beta[1]"],xlab=expression(beta1),ylab="posterior",main="beta1")
+hist(mcmcMatsenT4[,"beta[2]"],xlab=expression(beta2),ylab="posterior",main="beta2")
+hist(mcmcMatsenT4[,"beta[3]"],xlab=expression(beta3),ylab="posterior",main="beta3")
+hist(mcmcMatsenT4[,"beta[4]"],xlab=expression(beta4),ylab="posterior",main="beta4")
+hist(mcmcMatsenT4[,"beta[5]"],xlab=expression(beta5),ylab="posterior",main="beta5")
+hist(mcmcMatsenT4[,"sigma"],xlab=expression(sigma),ylab="posterior",main="sigma")
+
+#HPD interval
+HPDinterval(combine.mcmc(codaSamplesT4))
+
+#DIC analyses
+dicsen5= runJagsOutT$dic[1]
+dicsen5
+```
+
