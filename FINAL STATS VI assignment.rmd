@@ -1,0 +1,336 @@
+---
+title             : "Replication study of: Digit ratio (2D:4D) moderates the impact of sexual cues on men's decision in ultimatum games"
+shorttitle        : "Assignment of Statistics VI"
+
+author: 
+  - name          : "Chiara Van Reyn"
+  - name          : "Kirsten Verhaegen"
+  - name          : "Radosław Sterna"
+  - name          : "Marie Bertels"
+  - name          : "Mary Ann Ciosk"
+  - name          : "Brent Hendrickx"
+
+author_note       : "Link to OSF: https://osf.io/y759r/?view_only=9823bc01f7964f5eb73bb8b07f0fd8d5"
+
+affiliation:
+    institution   : "KU LEUVEN"
+
+bibliography      : "stats6references.bib"
+
+figsintext        : no
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+lineno            : no
+mask              : no
+
+class             : "man"
+
+output:
+  bookdown::html_document2: default
+  
+
+---
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE,cache = TRUE)
+list.of.packages <- c("rmarkdown","msm", "Hmisc", "ggpubr", "car", "ggplot2", "sjstats","pwr", "papaja", "knitr", "dplyr", "apaTables", "MBESS")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos = "http://cran.us.r-project.org")
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+#### **Introduction**
+
+Decision making is often studied using the ultimatum game [@guth1982experimental].  In this game, a proposer participant is asked to split a sum of money between themselves and a second responder participant. The responder participant can choose to accept or reject the offer. If the responder rejects the offer, neither of the participants receives any money. If the responder accepts the offer, the responder and proposer receive the division of money offered by the proposer. Various manipulations can be used to study the influence of different factors on decision making, such as the influence of increased testosterone levels. 
+@van2004testosterone showed that participants become more reward dependent and less punishment sensitive after testosterone administration. However, there is some debate about whether testosterone levels affect decision making. For example, @ortner2013no did not find evidence for an effect of increased testosterone on outcomes of a delayed gratification task. 
+Testosterone increases can be induced by different factors, such as exposure to sexual cues [@goldey2011sexy; @lopez2009attractive]. However, there are individual differences in testosterone sensitivity [@manning1998ratio]. Thus, not everyone is equally susceptible to the influences of fluctuating testosterone levels. Average testosterone levels are sometimes measured indirectly using the 2D:4D digit ratio [@garcia2012second;@neave2003second]. This is the ratio of the length of the index finger (2D) to the length of the ring finger (4D). The digit ratio is thought to reflect the degree to which a person was exposed to prenatal androgen. On average, people with a lower digit ratio have higher average levels of testosterone [@manning2002digit] and higher testosterone sensitivity. Therefore it would be expected that men with lower digit ratios would be more affected by exposure to sexual cues. 
+@van2006digit conducted a study about the influence of sexual cues on decision making, using a modified version of the ultimatum game. More specifically, they investigated whether this influence can be moderated by average testosterone levels and greater sensitivity to testosterone, as measured through the digit ratio. The researchers chose to deviate from the original ultimatum game, resulting in a slightly different approach. Each participant was both the proposer and the responder, for which both maximum offer and minimum acceptance level were recorded respectively. The researchers predicted that prior exposure to sex cues would increase the likelihood of a man accepting an unfair division of money and that this would be particularly true of men with a lower digit ratio. They concluded that participants with lower digit ratios are more prone to accept unfair offers after exposure to sexual cues. 
+The study by @van2006digit can be useful for applications in marketing. For example, companies might use sexual cues in their advertising to alter the decision making of consumers, causing them to focus more on immediate rewards, and accept offers that an individual may perceive as unfair without sexual cues present. However, there are numerous shortcomings in the study which make the results questionable.
+Firstly, the authors hypothesized that there is a relationship between testosterone and decisions about accepting or rejecting the offer, moderated by sex cues. However, they did not measure the testosterone levels directly. The 2D:4D ratio is only a correlate of some of the testosterone features such as sensitivity or overall level [@manning1998ratio;@manning2003second]. Testosterone level can be measured reliable from a saliva sample between 15 and 20 minutes after exposure to sexual stimuli [@van2014measurement], so it would be worth investigating if the manipulation worked.
+Secondly, different factors cause testosterone levels to vary within and between people which may have caused noise in their data. As @van2006digit state, testosterone level affects the decision to accept unfair divisions. Since the impact of sexual cues relies on testosterone reactivity, this is an important consideration. However, they did not take into account that testosterone can fluctuate under the influence of many factors in several ways. One of the factors that has a big impact is that testosterone levels are about 50% higher in the morning than in the evening [@van2014measurement]. @van2006digit did not report whether they conducted their study at the same time of the day with each participant. 
+Thirdly, study 1 has a relatively small sample size. According to @simmons2011false, authors should collect a minimum of 20 observations per condition in order to have sufficient power levels. With an unbalanced design of 23 and 21 participants in the conditions, they are meeting a minimum standard. Increasing the number of participants can be easily obtained by recruiting more students (in case of this study from the economics department) and rewarding them with credit points. @van2006digit did not mention the size of their effects and did not share their data,therefore we cannot compute the power of their analyses with certainty. However, if the interaction effect that rejected the null hypothesis with an alpha level of 0.05, had an effect size of d = 0.2, this would have resulted in a power of only 0.1. Therefore it is not likely the effect they found was a true effect.
+Following these shortcomings, we have some rational to question whether their reported are valid. First, as mentioned earlier, there is some disagreement on the actual influence of testosterone on decision making [@ortner2013no]. Second, the original study was seriously underpowered. This makes it hard to claim that the effect was certainly a true effect, especially since there are a few things they did not take into account, such as a manipulation check or controlling for the timing of the experiment. Therefore we will attempt to replicate the findings of the first study of @van2006digit, taking these issues into account. We will try to account for circadian fluctuations in testosterone levels by testing all participants at the same time of the day. We will do this in a specific time frame in the afternoon, between 2 p.m. and 4 p.m. Additionally, we will check if the sexual cues increased testosterone levels in participants.
+In sum, we hypothesize that, as in the original study, sexual cues will increase the likelihood of accepting unfair offers in the ultimatum game. Moreover, we predict that males with lower 2D:4D digit ratios will be more likely to accept unfair offers after exposure to sexual cues. Additionally, we hypothesize that sexual cues will lead to the increase in the blood testosterone levels in comparison to nonsexual cues.
+
+#### **Methods**
+
+#### **Participants**
+Participants will be heterosexual adult males who will be recruited through flyers and online advertisements. As in the original study, they will most likely be first year bachelor students of economics who will receive course credit for participating in this study. Additionally, participants will be told they have a chance to win up to €10 if they participate in the study. Following the original study, we will recruite 44 participants. However, we will not use a sample size of $n=21$ in the experimental and $n=23$ in the control condition, but we will make use of a balanced design of a sample size of $n=22$ in each condition. 
+
+#### **Materials**
+
+The same stimuli sets that were used in the original experiment by Van den Bergh and DeWitte (2006), as well as in the preliminary study, will be used in the replication study. One stimuli set consists of fifteen pictures of landscapes (*control condition*) and the second set of stimuli contains fifteen pictures featuring a female model wearing a bra or a bathing suit with their full torso displayed (*experimental condition*). 
+	The scanner that was used in the original experiment will also be used in the current study.
+
+
+#### **Procedure**
+First, participants will given an informed consent to sign if they agree with the terms.
+Second, unlike the original study by @van2006digit, participants will fill in a short demographic questionnaire on the computer to gather information including their age and sexual orientation.	
+Third, a saliva sample will be taken from each participant to test their baseline testosterone level.
+Fourth, participants will be randomly assigned to one of two conditions, the landscape condition or the sexy women condition. The landscape condition will act as the control condition andthe sexy women condition will be the experimental condition. All participants will be asked to complete a computer task in which they have to rate 15 pictures based on attractiveness. Participants in the landscape condition will rate the stimuli set containing  pictures of landscapes while participants assigned to the sexy women condition will rate the stimuli set that contains pictures of female models.
+Fourth, the rules of the ultimatum game will be explained to the participants. In this game, the proposer has to propose an offer on how to split 10 between himself and the responder. The responder can choose to accept or reject the proposer's offer. If the responder rejects the offer, neither participant will receive any money. If the responder accepts the division, both the responder and proposer will receive the division of the money that was proposed by the proposer. In accordance with the original study, the participants will not actually participate in the ultimatum game, but will be asked to indicate on a visual analogue scale (displayed on the computer screen), ranging from 0 to 10, the maximum amount of money they would offer if they were the proposer. Participants also have to indicate on the visual analogue scale what minimum offer they would accept if they were the responder. Participants will be told that 20% of all individuals participating in the experiment will be randomly chosen as either a proposer or a responder and 'play' the game against another participant based on the answers given on the visual analogue scale.
+Fifth, the digit ratio (2D:4D) of the right hand will be measured using a scanner. Participants will place the palms of their right hand on the glass plate of the scanner.  To measure the length of the index finger and the ring finger on the scans, a rater will use the 'measure tool' function of the Adobe Photoshop program, from the tip of the finger to the most ventral proximal digital crease. The same rater will measure the lengths of the index and ring finger again, using the same method, two weeks later. Therefore, the intrarater reliability can be measured. The average between the two measurements by the original rater will be used for this.
+Lastly, a second saliva sample will be taken from each participant 15 minutes after the end of the rating task to measure their testosterone levels. This is because @van2014measurement showed that testosterone levels by saliva are most accurate 15 minutes after  exposure to  sex cues. Therefore, if there is remaining time  before the second sample can be taken, a boring travel video will be shown to participants since it is a good stimulus to fill  time without influencing  testosterone levels [@van2014measurement].Given that testosterone levels decrease during the day, data for this study will only be collected  between 2 p.m. and 4 p.m. [@van2014measurement].
+
+
+#### **Analysis**
+As stated earlier, we will do a manipulation check to see whether it is correct to assume that men’s testosterone levels increase after seeing pictures of sexy women. The saliva levels taken before will be subtracted from these taken after the experiment for every participant. The differences will be tested between groups by using independent samples t-test.
+The analysis itself can be divided into multiple steps. First, the data will be explored with descriptive statistics as well as visually using a scatter plot. Second, a two way-ANOVA analysis will be conducted with digit-ratio as a continuous factor, the condition as a categorical factor and the minimum acceptance level as the dependent variable. The interaction effect between condition and digit ratio will also be included. Third, a Spearman correlation test will be conducted separately for each condition between the minimum acceptance level and the digit ratio.   
+A few steps will be taken in addition to the analysis. First, the data will be checked for completeness. Participant’s data will be excluded if they contain missing values. However, we do not expect this to be the case in our replication, because the experimental procedure does not suggest that missing values are likely. Second, we would like to perform extra statistical checks that were not mentioned in the original study. More specifically, the assumptions of the two way-ANOVA will also be tested. For testing the normality assumption a Shapiro-Wilk test will be used. The assumption of homogeneity of variance will be tested using a Levene’s test. The assumption of the monotonic relationships will also be checked visually. Third, the influence of the outliers will be studied using a sensitivity analysis and a decision will be based on the result of this analysis. This sensitivity analysis will contain a direct comparison between the analyses with and without the outliers. The impact of the outliers on the assumptions will be tested as well as on the significance of the analyses. If outliers create significance, they will be dropped. If the inclusion of the outliers results in a serious violation of the assumption, we will exclude the outliers from the analyses.
+
+
+
+```{r, include=FALSE}
+
+# calculate sample size for manipulation check
+samplesizemanipulation <- pwr.t.test(n=44, d=0.2, sig.level = 0.05, power=NULL, type=c("paired"), 
+           alternative= c("two.sided"))
+
+# manipulation check
+salivaTpre <- rnorm(22, 85, 10) #saliva testosterone levels before the manipulation check task in pg/mol
+salivaTpost <- rnorm(22, 100, 10) #saliva testosterone levels after the manipulation check task in pg/mol
+controlpre <- rnorm(22, 85, 10)
+controlpost <- rnorm(22, 100, 10)
+
+differences_pre <- salivaTpre - controlpre
+differences_post <- salivaTpost - controlpost
+
+differences <- c(differences_pre)
+differences <- c(differences,differences_post)
+condition <- c(rep(1:2,each=22))
+
+my_data <- data.frame(differences,condition)
+
+ttest <- t.test(differences ~ condition, paired = FALSE, alternative = "two.sided") # paired samples t-test to see whether the saliva testosterone levels changed significantly
+ttest
+```
+#### **Results**
+
+#### **Manipulation check**
+The simulated data were drawn from a normal distribution with a mean of $μ=85$ and a standard deviation of $SD= 10$ for saliva testosterone levels before the experiment, and a mean of $μ=100$ and a standard deviation of $SD=10$ for saliva testosterone levels after the experiment. The independent t-test of pre and post saliva testosterone levels does not prove to be significant ($p = `r ttest$p.value`$), suggesting that the manipulation is not effective. However, using the same sample size of the original study for our manipulation check ($n=`r samplesizemanipulation$n`$), results in a low power ($power=`r samplesizemanipulation$power`$). This could lead to a higher Type II error probability, which we have to be aware of while interpreting these results. Therefore, it is still unsure whether this manipulation check was effective. 
+
+```{r, include=FALSE}
+# calculate power of original study, unbalanced design, assuming small effect size of 0.2
+powerstudyone <- pwr.2p2n.test(h = 0.2, n1 = 23, n2= 21, sig.level = 0.05, power = NULL, 
+              alternative = "two.sided")
+
+# calculate power of study one, balanced design, assuming small effect size of 0.2
+powerstudy <- pwr.2p.test(h = 0.2, n=22, sig.level = 0.05, power = NULL, 
+              alternative = "two.sided")
+
+# calculate sample size with a balanced design for our replication study with a sufficient power, assuming small effect size of 0.2
+samplesizestudyone <- pwr.2p.test(h = 0.2, n = NULL, sig.level = 0.05, power = 0.8, 
+            alternative = "two.sided")
+
+
+# simulate data from a normal distribution with minimum 
+acceptance_control <- round(msm::rtnorm(n=10,mean=3.41,sd=0.3,lower=0,upper=Inf)) 
+# using the rtnorm function = truncated version of the rnorm, in which you can specify your lower and upper bounds
+acceptance_exp <- round(msm::rtnorm(n=10,mean=3.19,sd=0.3,lower=0,upper=Inf)) 
+# same for the experimental distribution
+digit_ratio <- round(msm::rtnorm(n=20,mean=.95,sd=0.05,lower=0,upper=Inf)) 
+# same for digit ratio distribution
+
+set.seed(23) # to make sure we get the same values when drawing random numbers 
+
+acceptance_control <- rnorm(n = 22, mean = 3.41, sd = 0.3)
+# draw from a multivariate normal distribution
+# add minimum, otherwise could have negative values
+# simulations from normal distribution for control condition
+acceptance_exp <- rnorm(n = 22, mean = 3.19, sd = 0.3) 
+# simulations from normal distribution for experimental condition
+acceptance_average <-rowMeans(cbind(acceptance_exp,acceptance_control))  #calculate mean from each simulated data point in two conditions
+acceptance_levels <- c(acceptance_exp,acceptance_control) #just put simulated data points together
+condition <- c(rep("Experimental",22), rep("Control", 22)) #just create a list with 23x the string "experimental" and 21x the string "control"
+digit_ratio = rnorm(n = 44, mean = .95, sd = .05) 
+# Sample averages and standard deviations from the results of the original study
+
+# make a dataframe of the simulated data
+sim_dataframe = data.frame("Acceptance levels" = acceptance_levels, "Condition" = condition, "Digit Ratio" = digit_ratio) #put the variables in a dataframe to use for data analysis 
+
+# Check the structure
+str(sim_dataframe)
+head(sim_dataframe)
+
+# check if dataframe has missing values
+NAvalues <- sim_dataframe[!complete.cases(sim_dataframe),]
+
+# descriptive statistics
+mean(digit_ratio)
+mean(acceptance_levels)
+sd(digit_ratio)
+sd(acceptance_levels)
+```
+
+
+
+
+
+```{r, include=FALSE}
+# Anova with interaction effect between conditiona and digit ratio
+AOV3i <- aov(acceptance_levels ~ condition + digit_ratio + condition:digit_ratio) #twoway anova with interaction effect between condition and digit ratio
+anovatje <- summary(AOV3i)
+
+
+#extract p value
+summary(AOV3i)[[1]][["Pr(>F)"]]
+summary.aov(AOV3i)
+
+# effect size
+effectsize <- cohens_f(AOV3i)
+
+# the proportion of the total variability in the dependent variable 
+# that is accounted for by the variation in the independent variable
+# NOT biased when the sample size is small or the independent variables have many group levels
+omega_sq(AOV3i)
+
+# summary, including the above effect size measures
+anova_stats(AOV3i)
+
+# confidence intervals of effect size
+# uses bootstrapping - here, for speed, just 100 samples
+omega <- omega_sq(AOV3i, partial = TRUE, ci.lvl = .9, n = 100)
+
+# Spearman correlations
+spearman1 <- rcorr(sim_dataframe$Acceptance.levels[sim_dataframe$Condition=="Experimental"],sim_dataframe$Digit.Ratio[sim_dataframe$Condition=="Experimental"],type = "spearman")
+spearman2 <- rcorr(sim_dataframe$Acceptance.levels[sim_dataframe$Condition=="Control"],sim_dataframe$Digit.Ratio[sim_dataframe$Condition=="Control"],type = "spearman")
+
+#variable
+anova1<-apa_print.aov(AOV3i)
+apa_table(anova1$table)
+aovresults <- anova1$table
+
+```
+
+
+#### **Analyses of study one**
+First of all, we checked for missing values and as expected there were none. 
+There seems to be a small negative relationship between acceptance levels and digit ratio, while inspecting the data with a scatterplot (Figure \@ref(fig:F1)). This could mean that lower acceptance levels are related to higher values of digit ratio and vice versa. When we take the conditions into account, it is visible from figure that participants in the control condition have higher acceptance levels in comparison to participants in the experimental condition, related with lower and higher values of digit ratio, respectively (Figures \@ref(fig:F2) and \@ref(fig:F3)). 
+Following the results from the original study, the simulated data for the minimum acceptance levels of the experimental condition were drawn from a normal distribution with a sample size of $n=10$, a mean of $μ=3.19$ and a standard deviation of $SD=.3$. For the minimum acceptance levels of the control condition, again, a normal distribution was used with a sample size of $n=10$, a mean of $μ=3.41$ and a standard deviation of $SD=.3$. For the digit ratios, again, a normal distribution was used with a sample size of $n=44$, a mean of $μ=.95$ and a standard deviation of $SD= .05$. See Table \@ref(tab:T1) for a summary of the means of the variables by condition. 
+
+The two way-ANOVA with interaction effect resulted in strong significance for the condition variable ($F = `r aovresults$F[1]`$, $df = `r aovresults$df1[1]`$, $df = `r aovresults$df2[1]`$, $p = `r aovresults$p[1]`$). Neither the digit ratio nor the interaction between condition and digit ratio were significant. Table \@ref(tab:T2) shows the results of the ANOVA.
+The effect sizes of the ANOVA are summarized in Table \@ref(tab:T3) and their respective confidence intervals in Table \@ref(tab:T4).
+The results of the Spearman correlation test for the minimum acceptance level with the experimental and control condition are summarized in Table \@ref(tab:T5) and \@ref(tab:T6), respectively.
+
+```{r, include=FALSE}
+# Extract the residuals
+aov3_residuals <- residuals(object = AOV3i)
+# Run Shapiro-Wilk test
+shapiro <- shapiro.test(x = aov3_residuals)
+```
+
+
+```{r, include=FALSE}
+# Levene's test 
+levene <- leveneTest(acceptance_levels~condition)
+leveneF <- levene$`F value`[1]
+levenep <- levene$`Pr(>F)`[1]
+```
+
+
+```{r, include=FALSE}
+# check for outliers
+outliers <- function(dt, var) {
+  var_name <- eval(substitute(var),eval(dt))
+  tot <- sum(!is.na(var_name))
+  na1 <- sum(is.na(var_name))
+  m1 <- mean(var_name, na.rm = T)
+  par(mfrow=c(2, 2), oma=c(0,0,3,0))
+  boxplot(var_name, main="With outliers")
+  hist(var_name, main="With outliers", xlab=NA, ylab=NA)
+  outlier <- boxplot.stats(var_name)$out
+  mo <- mean(outlier)
+  var_name <- ifelse(var_name %in% outlier, NA, var_name)
+  boxplot(var_name, main="Without outliers")
+  hist(var_name, main="Without outliers", xlab=NA, ylab=NA)
+  title("Outlier Check", outer=TRUE)
+  na2 <- sum(is.na(var_name))
+  message("Outliers identified: ", na2 - na1, " from ", tot, " observations")
+  message("Proportion (%) of outliers: ", (na2 - na1) / tot*100)
+  message("Mean of the outliers: ", mo)
+  m2 <- mean(var_name, na.rm = T)
+  message("Mean without removing outliers: ", m1)
+  message("Mean if we remove outliers: ", m2)
+  
+}
+
+outl <- outliers(sim_dataframe, Digit.Ratio)
+```
+
+#### **Checking the assumptions for study one**
+Figure \@ref(fig:F4) shows a normality plot, for which it is difficult to determine whether the normality assumption is violated or not. However, the Shapiro-Wilk test was not significant ($W = `r shapiro$statistic`$, $p = `r shapiro$p.value`$). 
+The assumption of homogeneity of variances was also not violated. The Levene’s test was not significant ($F= `r leveneF`$,$p= `r levenep`$). Figure \@ref(fig:F5) shows a homogeneity plot. 
+Because the current data is simulated, there were no missing values. 
+There were also no outliers in this dataset.
+
+```{r T1, results='asis'}
+# Calculate summary statistics
+digit.summary <- sim_dataframe %>% group_by(as.factor(Condition)) %>%
+  summarise(
+    "Acceptance levels" = mean(Acceptance.levels),
+    "Digit ratio" = sd(Digit.Ratio)
+  )
+
+# Print table in APA format
+apa_table(digit.summary, caption = "Descriptive statistics of the mean of acceptance levels and digit ratio by condition")
+```
+
+```{r T2, results='asis'}
+anova1<-apa_print.aov(AOV3i)
+apa_table(anova1$table, caption= "Summary ANOVA")
+aovresults <- anova1$table
+```
+
+```{r T3, results='asis'}
+effectsize1 <- apa_table(effectsize, caption = "Effect sizes ANOVA")
+```
+
+```{r T4, results='asis'}
+omega1 <- apa_table(omega, caption = "Confidence intervals for effect sizes of ANOVA")
+```
+
+```{r T5, results='asis'}
+spearmancor1 <- apa_table(spearman1$r, caption = "Spearman correlations for experimental condition")
+```
+
+```{r T6, results='asis'}
+spearmancor2 <- apa_table(spearman2$r,  caption = "Spearman correlations for control condition")
+```
+
+
+```{r F1, results='asis',fig.cap="\\label{fig1} The relationship between digit ratio and acceptance levels"}
+# Exploratory scatterplot 
+scatter <- plot(acceptance_levels~digit_ratio, xlab= "Digit ratio", ylab= "Acceptance levels", 
+     main= "The relationship between digit ratio and acceptance levels")
+abline(lm(acceptance_levels~digit_ratio), col="blue", lwd=3, lty=2)
+```
+
+```{r F2, results='asis',fig.cap="\\label{fig2} The relationship between digit ratio and acceptance levels by condition"}
+# Exploratory scatterplot per condition
+ggplot(sim_dataframe, aes(x=digit_ratio, y=acceptance_levels, color=condition)) +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r F3, results='asis',fig.cap="\\label{fig3} The relationship between digit ratio and acceptance levels"}
+# Two-way interaction plot
+inter <- interaction.plot(x.factor = sim_dataframe$Digit.Ratio, trace.factor = condition, 
+                 response = sim_dataframe$Acceptance.levels, fun = mean, 
+                 type = "b", legend = TRUE,
+                 xlab = "Digit Ratio", ylab="Acceptance levels",
+                 pch=c(0,10), col = c("#00AFBB", "#E7B800"))
+```
+
+
+```{r F4, results='asis', fig.cap="\\label{fig4}Plot for normality"}
+# Plot for normality
+normality <- plot(AOV3i,2)
+```
+
+```{r F5, results='asis', fig.cap="\\label{fig4}Plot for homogeneity of variances"}
+# Plot for homogeneity
+homogeneity <- plot(AOV3i,1)
+
+```
