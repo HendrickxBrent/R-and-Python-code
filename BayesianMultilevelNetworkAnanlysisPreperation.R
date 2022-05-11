@@ -9,6 +9,10 @@
 ## author: Brent Hendrickx
 
 
+## there is a lot of repetition in this code in order for me to quickly analyze the data without having to do more advanced programming such as writing functions
+## although this is something I would like to learn in the very near future
+
+
 library(haven)
 library(dplyr)
 library(tidyverse)
