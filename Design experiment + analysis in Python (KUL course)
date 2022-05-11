@@ -1,1 +1,176 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Aug 10 16:59:00 2019
 
+@author: brent
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+from scipy.stats import wilcoxon
+import glob
+
+
+#============================================================
+#============================================================
+#
+#              importing and filtering of data
+#
+#============================================================
+#============================================================
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                  importing data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Loading by relative path: make sure this document is in the same folder as your data!
+
+#analyse for all participants
+# first: list of file names
+# The * means "match anything"
+dataframe_list = glob.glob("Part_nr*.csv")
+# second: into lists of dataframes
+list_of_dfs = [pd.read_csv(dflist) for dflist in dataframe_list]
+# lastly, combining multipule dataframes
+dataframe_no_filter   = pd.concat(list_of_dfs, ignore_index=True)
+
+# analyse data for only 1 participant
+# Leave out the comment in the code here below and put it before the code 5 lines above like so: #dataframes   = pd.concat(list_of_dfs, ignore_index=True)
+#you still need to specify which csv document 
+
+#dataframe_no_filter = pd.read_csv('Part_nr17_2019_Sep_08_1837.csv')
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                  filter data
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# We only want to analyse people that indicated they do not have problems with
+# identifying the right colors and the responses that were correct.
+
+# However people that indicated having problems with identifying the right colors 
+# can be compared to the other people if their proportion of correct responses 
+# do not differ significantly, but will not be done here.
+
+
+dataframe = dataframe_no_filter[dataframe_no_filter['colorblind'] == "No"]
+
+#only analysing correct responses
+dataframephase1correct = dataframe[dataframe.phase1correct == 1]
+dataframephase2correct = dataframe[dataframe.phase2correct == 1]
+
+
+
+#============================================================
+#============================================================
+#
+#                     analysing data
+#
+#============================================================
+#============================================================
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                  descriptive statistics
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# descriptive statistics of the interesting things
+# with count, mean, standarddeviation, min, max,...
+# note that for "age" only count does not have logical interpretation
+print("")
+print("Descriptive statistics")
+print("")
+descriptive_stats_age_phase1correct_phase1reactiontime = dataframephase1correct[['age','phase1correct','phase1reactiontime']].describe()
+print(descriptive_stats_age_phase1correct_phase1reactiontime)
+
+print("")   #making output more readable
+print("")
+
+descriptive_stats_phase2correct_phase2reactiontime = dataframephase2correct[['age','phase2correct','phase2reactiontime']].describe()
+print(descriptive_stats_phase2correct_phase2reactiontime)
+print("")   #making output more readable
+print("")
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                  hypothesis testing
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Normally a paired sample t-test would be used to clarify if there is a difference in reaction time of the 2 phases
+# However, fast reaction times make the data probably too skewed and alternative statistics might need to be used due to the violation
+# After a search on the internet i found out that the non-parametric Wilcoxon-test could be the alternative.
+
+stat, p = wilcoxon(dataframephase1correct['phase1reactiontime'],dataframephase2correct['phase2reactiontime'])
+print('Wilcoxon statistic = %.3f, p=%.3f' % (stat, p))
+alpha = 0.05
+if p > alpha:
+	print('Same distribution (fail to reject H0)')
+else:
+	print('Different distribution (reject H0)')
+    
+print("")    
+print("")
+
+# No assumptions are tested and are likely to be violated (normality, outliers,...)
+# However additionally the paired t-test statistic is given to give an idea there could be a significant difference
+paired_t_test = stats.ttest_rel(dataframephase1correct['phase1reactiontime'], dataframephase2correct['phase2reactiontime'])
+print("Paired t-test results (assumptions are NOT checked and are likely to be violated):")
+print('Paired t-test, t = %.3f, p=%.3f' % (paired_t_test))
+
+if p > alpha:
+	print('Same distribution (fail to reject H0)')
+else:
+	print('Different distribution, reject H0 if assumptions are not violated (need to check)')
+
+print("")    #making output more readable. Also can not get the userwarning to go away
+print("")
+print("")
+
+#============================================================
+#============================================================
+#
+#                     visualization of data
+#
+#============================================================
+#============================================================
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                  histogram with density lines
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+sns.set_style("white") #making sure the overlapping histograms are very visible
+#setting hue of the colors of the histograms and thickness of denitylines
+histogramreactiontimes = dict(hist_kws={'alpha':.5}, kde_kws={'linewidth':3})
+sns.distplot(dataframephase1correct['phase1reactiontime'], color="dodgerblue", label="phase 1 rt", **histogramreactiontimes, bins=12, rug=True)
+sns.distplot(dataframephase2correct['phase2reactiontime'], color="darkorange", label="phase 2 rt", **histogramreactiontimes, bins=12, rug=True)
+plt.xlabel("Reaction time (s)")
+plt.ylabel("Density")
+plt.xlim(0.2,2.2)
+
+plt.title('Histogram and density distrubution of reaction time')
+plt.legend();
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                         barplot
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#however less pretty
+plt.style.use('ggplot')
+dataframe = pd.DataFrame({'phase 1 rt': dataframe['phase1reactiontime'], 'phase 2 rt': dataframe['phase2reactiontime']},
+                columns=['phase 1 rt', 'phase 2 rt'])
+
+dataframe.plot.hist(title="Stroop task", stacked=True, bins = 20);
+plt.ylabel('Count')
+plt.xlabel('Reaction time (s)')
+plt.title('Barplots of reaction time')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#                       boxplot
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+color = dict(boxes='deeppink', whiskers='black', medians="black", caps="black")
+dataframe.plot.box(color=color,patch_artist=True);
+plt.ylabel('Reaction time (s)')
+plt.title('Boxplots of reaction time')
