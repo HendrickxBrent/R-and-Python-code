@@ -9,6 +9,7 @@
 library(sna)
 library(igraph)
 # library(ggraph)
+library(ergm)
 
 library(GGally)
 library(network)
