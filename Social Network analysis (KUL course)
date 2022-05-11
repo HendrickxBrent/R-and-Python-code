@@ -1,0 +1,3182 @@
+
+#######                 ##############################################              #
+#######                 ###         Assignment Social network      ###              #
+#######                 ###                 analysis               ###              #
+#######                 ###              Brent Hendrickx           ###              #
+#######                 ##############################################              #
+
+
+library(sna)
+library(igraph)
+# library(ggraph)
+
+library(GGally)
+library(network)
+library(ggplot2)
+library(vioplot)
+
+#########################                       #########################
+#########################                       #########################
+#########################  1) data preperation  #########################
+#########################                       ######################### 
+#########################                       #########################
+
+affective_w1 <- as.matrix(read.csv("RECENS_data/4400_affective_w1.csv",
+                                   header=TRUE, row.names=1, sep=","))
+affective_w2 <- as.matrix(read.csv("RECENS_data/4400_affective_w2.csv",
+                                   header=TRUE, row.names=1, sep=","))
+trust_w1 <- as.matrix(read.csv("RECENS_data/4400_trust_w1.csv",
+                               header=TRUE, row.names=1, sep=","))
+trust_w2 <- as.matrix(read.csv("RECENS_data/4400_trust_w2.csv",
+                               header=TRUE, row.names=1, sep=","))
+sex <- as.matrix(read.csv("RECENS_data/4400_sex.csv",
+                          header=TRUE, row.names=1, sep=","))
+drink <- as.matrix(read.csv("RECENS_data/4400_drink.csv",
+                            header=TRUE, row.names=1, sep=","))
+
+######################### 
+#########################  a)  INSPECTION OF THE DATA OBJECTS - data checks
+######################### 
+
+# friendship networks wave 1
+class(affective_w1)
+mode(affective_w1)
+dim(affective_w1)
+rownames(affective_w1)
+colnames(affective_w1)
+
+# friendship networks wave 2
+class(affective_w2)
+mode(affective_w2)
+dim(affective_w2)
+rownames(affective_w2)
+colnames(affective_w2)
+
+# trust networks wave 1
+class(trust_w1)
+mode(trust_w1)
+dim(trust_w1)
+rownames(trust_w1)
+colnames(trust_w1)
+
+# trust networks wave 2
+class(trust_w2)
+mode(trust_w2)
+dim(trust_w2)
+rownames(trust_w2)
+colnames(trust_w2)
+
+# sex
+class(sex)
+mode(sex)
+dim(sex)
+rownames(sex)
+colnames(sex)
+
+# drink 
+class(drink)
+mode(drink)
+dim(drink)
+rownames(drink)
+colnames(drink)
+
+
+# are there the same students in the first two waves?
+all.equal(rownames(affective_w1), rownames(affective_w2))
+all.equal(rownames(trust_w1), rownames(trust_w2))
+
+# what kind of values are there in the data?
+table(affective_w1)
+table(affective_w2)
+table(trust_w1)
+table(trust_w2)         # 0 (no trust) - 1 (trust)
+table(sex)              # 2 - girl, 1 - boy
+table(drink)            # range 1 (lowest) - 4 (highest)
+
+# these are the value labels for the affective network:
+# -2: enemy, -1: dislike, 0: neutral, 1: like, 2: friend
+
+
+
+######################### 
+#########################  b) Recode the affective network to a 1-0 friendship matrix
+######################### 
+
+
+friendship_w1 <- affective_w1 
+friendship_w1[affective_w1 %in% c(1,-1,-2,0)] <- 0
+friendship_w1[affective_w1 == 2] <- 1
+
+friendship_w2 <- affective_w2
+friendship_w2[affective_w2 %in% c(1,-1,-2,0)] <- 0
+friendship_w2[affective_w2 == 2] <- 1
+
+# check your solution: if you did it right, the following lines should return TRUE
+all.equal(which(friendship_w1==1), which(affective_w1==2))
+all.equal(which(friendship_w1==0), which(affective_w1 %in% c(-2, -1, 0, 1)))
+
+all.equal(which(friendship_w2==1), which(affective_w2==2))
+all.equal(which(friendship_w2==0), which(affective_w2 %in% c(-2, -1, 0, 1)))
+
+# 4. Explore the data
+
+# creating gender and drinking objects 
+gender <- table(sex)
+drinkw1 <- drink[,1]
+drinkw2 <- drink[,2]
+
+
+######################### 
+#########################  c) absence and missingness
+######################### 
+
+
+# How much missing data in the networks?
+#friendship
+nrow(friendship_w1)
+class_size <- nrow(friendship_w1)
+
+NAfrw1 <- sum(is.na(friendship_w1)) - class_size
+friend_miss_w1 <- NAfrw1 / ( nrow(friendship_w1) * (ncol(friendship_w1) - 1))
+friend_miss_w1
+
+NAfrw2 <- sum(is.na(friendship_w2)) - class_size
+friend_miss_w2 <- NAfrw2 / ( nrow(friendship_w2) * (ncol(friendship_w2) - 1))
+friend_miss_w2
+# fix the NA -> 0
+friendship_w2[is.na(friendship_w2)] <- 0
+
+#trust
+trust_miss_w1 <- sum(is.na(trust_w1)) - class_size
+trust_miss_w1 <- trust_miss_w1 / ( nrow(trust_w1) * (ncol(trust_w1) - 1))
+trust_miss_w1
+
+trust_miss_w2 <- sum(is.na(trust_w2)) - class_size
+trust_miss_w2 <- trust_miss_w2 / ( nrow(trust_w2) * (ncol(trust_w2) - 1))
+trust_miss_w2
+
+#sex
+sex_miss <- sum(is.na(sex))
+sex_miss <- sex_miss / (class_size)
+sex_miss
+
+#drink
+drink_miss <- sum(is.na(drinkw1))
+drink_miss <- drink_miss / (class_size)
+drink_miss
+
+# were there students absent? 
+# This question is not really necesarry since last lines showed there is fewer 
+# than 37 NA's in all networks.
+
+# wave 1
+sum(rowSums(is.na(friendship_w1), na.rm=T)==class_size)
+absent_w1 <- sum(rowSums(is.na(friendship_w1), na.rm=T)==class_size)
+absent_w1 #no
+
+# wave 2
+sum(rowSums(is.na(friendship_w2), na.rm=T)==class_size)
+absent_w2 <- sum(rowSums(is.na(friendship_w2), na.rm=T)==class_size)
+absent_w2 #no
+
+
+#-------------------------------------------------------------------------
+#########################                       #########################|
+#########################                       #########################|
+#########################  2) DISCRIPTIVES      #########################|
+#########################                       #########################|
+#########################                       #########################|
+#-------------------------------------------------------------------------
+
+
+######################### 
+#########################  2.1)  Statisitcs
+######################### 
+
+# first put the networks in graph objects for igraph
+graph_frw1 <- graph.adjacency(friendship_w1)
+graph_frw2 <- graph.adjacency(friendship_w2)
+graph_trw1 <- graph.adjacency(trust_w1)
+graph_trw2 <- graph.adjacency(trust_w2)
+
+
+######################### 2.1.2) transitivity
+
+##### aze
+
+#transitivity/ clustering coefficient
+gtrans(friendship_w1,mode="graph")     # 0.4279661
+gtrans(friendship_w2,mode="graph")     # 0.5466667
+gtrans(trust_w1,mode="graph")          # 0.5327869
+gtrans(trust_w2,mode="graph")          # 0.5306122
+
+#diameter ftw
+lgc<-component.largest(friendship_w1,result="graph")
+gd<-geodist(lgc)
+max(gd$gdist)
+
+diafr2<-component.largest(friendship_w2,result="graph")
+gd<-geodist(diafr2)
+max(gd$gdist)
+
+# centrality measures are for undirected nets!
+centralization(friendship_w1,betweenness,mode='graph')
+centralization(friendship_w2,betweenness,mode='graph')
+centralization(trust_w1,betweenness,mode='graph')
+centralization(trust_w2,betweenness,mode='graph')
+
+centralization(friendship_w1,closeness,mode='graph')
+centralization(friendship_w2,closeness,mode='graph')
+centralization(trust_w1,closeness,mode='graph')
+centralization(trust_w2,closeness,mode='graph')
+
+centralization(friendship_w1,degree,mode='graph')
+centralization(friendship_w2,degree,mode='graph')
+centralization(trust_w1,degree,mode='graph')
+centralization(trust_w2,degree,mode='graph')
+
+
+# aze stop
+
+
+######################### 2.1.2) density
+
+# if the data was not scaled towards 0-1:
+# gden(affective.w1n, ignore.eval = F)  # 0.3663664
+# gden(affective.w2n, ignore.eval = F)  # 0.4029163
+
+gden(friendship_w1)
+friend_dens_w1 <- 0.1576577
+gden(friendship_w2)
+friend_dens_w2 <- 0.1673062
+
+gden(trust_w1)
+trust_dens_w1 <- 0.06906907
+gden(trust_w2)
+trust_dens_w2 <- 0.08033033
+
+######################### 2.1.3) reciprocity
+
+grecip(friendship_w1, measure="dyadic.nonnull")
+friend_rec_w1 <- 0.372549
+grecip(friendship_w2, measure="dyadic.nonnull")
+friend_rec_w2 <- 0.4256757 
+
+grecip(trust_w1, measure="dyadic.nonnull")
+trust_rec_w1 <- 0.2266667 
+grecip(trust_w2, measure="dyadic.nonnull")
+trust_rec_w2 <- 0.3544304 
+
+######################### 2.1.3) degrees
+
+# unscaled:
+# deg.afn1 <- degree(affective.w1n, cmode="freeman", ignore.eval = F)
+# outdeg.afn1 <- degree(affective.w1n, cmode="outdegree", ignore.eval = F)
+
+deg.fr <- degree(friendship_w1, cmode="freeman")
+outdeg.fr1 <- degree(friendship_w1, cmode="outdegree")
+indeg.fr1 <- degree(friendship_w1, cmode="indegree")
+outdeg.fr2 <- degree(friendship_w2, cmode= "outdegree")
+indeg.fr2 <- degree(friendship_w2, cmode="indegree")
+
+
+outdeg.tr1 <- degree(trust_w1, cmode= "outdegree")
+indeg.tr1 <- degree(trust_w1, cmode="indegree")
+outdeg.tr2 <- degree(trust_w2, cmode= "outdegree")
+indeg.tr2 <- degree(trust_w2, cmode="indegree")
+
+# histogram
+friend_ind_w1 <- indeg.fr1 # indegrees
+friend_outd_w1 <- outdeg.fr1 # outdegrees
+friend_ind_w2 <- indeg.fr2 # indegrees
+friend_outd_w2 <- outdeg.fr2
+
+trust_ind_w1 <- indeg.tr1 # indegrees
+trust_outd_w1 <- outdeg.tr1
+trust_ind_w2 <- indeg.tr2 # indegrees
+trust_outd_w2 <- outdeg.tr2
+
+# histograms -> let RSiena models depend on outdegree if outdegree is very skewd
+par(mfrow=c(2,2))
+hist(friend_ind_w1, xlim=c(0,12), ylim=c(0,12), breaks=8, col = "lightgreen")
+hist(friend_outd_w1, xlim=c(0,12), ylim=c(0,12), breaks=8, col = "lightblue")
+
+hist(friend_ind_w2, xlim=c(0,12), ylim=c(0,12), breaks=8, col = "lightgreen")
+hist(friend_outd_w2, xlim=c(0,12), ylim=c(0,12), breaks=8, col = "lightblue")
+
+hist(trust_ind_w1, xlim=c(0,10), ylim=c(0,25), breaks=8, col = "lightgreen")
+hist(trust_outd_w1, xlim=c(0,10), ylim=c(0,25), breaks=8, col = "lightblue")
+
+hist(trust_ind_w2, xlim=c(0,10), ylim=c(0,25), breaks=8, col = "lightgreen")
+hist(trust_outd_w2, xlim=c(0,10), ylim=c(0,25), breaks=8, col = "lightblue")
+par(mfrow=c(1,1))
+
+
+######################### 2.1.3) strength (weighted ties)
+
+##############
+##############    aze
+##############
+
+#strength (instead of degree: for weighted edges) -> in igraph
+detach(package:sna)
+library(sna)
+?strength
+graph.strength((affective.w1n), mode = "all")
+library(sand)
+vertices=v.attr.lazega)
+
+graph_af1 <- graph.adjacency(affective.w1)
+hist(graph.strength(graph_af1), col="pink",xlab="Vertex Strength", ylab="Frequency", main="")
+
+# the manner in which vertices of different degrees are linked with each other. 
+# Useful in assessing this characteristic is the notion of the average degree of 
+# the neighbors of a given vertex
+detach(package:igraph)
+library(sna)
+
+deg.af1 <- degree(affective.w1, cmode="freeman")
+detach(package:statnet)
+library(igraph)
+
+simplify(graph = graph_af1)
+plot(graph_af1)
+knnaf1 <- knn(graph_af1)$knn
+plot(d.yeast, a.nn.deg.yeast, log="xy",3+   col="goldenrod", xlab=c("Log Vertex Degree"),4+   ylab=c("Log Average Neighbor Degree"))
+
+
+
+
+######################### 2.1.4) segregation
+detach(package:sna)
+library(igraph)
+
+# interpretation: positive: homophily , 0: random, negative: heterophily 
+# If the coefficient is high, that means that connected vertices tend 
+# to have the same labels or similar assigned values.
+
+# Friendship selection table by gender
+
+# sex homopily
+# tendencies for friendship between students of similar/different sex at the two waves
+assortativity.nominal(graph_frw1,sex)  #0.3925472
+assortativity.nominal(graph_frw2,sex)  #0.1627312
+assortativity.nominal(graph_trw1,sex)  #0.4191919
+assortativity.nominal(graph_trw2,sex)  #0.262634
+
+# degree homophily
+# that is, do students with similar number of friends tend to be friends with each other?
+# that is, do students with similar amount of trust tend to trust each other more?
+assortativity.degree(graph_frw1)   #0.07767174
+assortativity.degree(graph_frw2)   #0.008977205
+assortativity.degree(graph_trw1)   #0.05156735
+assortativity.degree(graph_trw2)   #0.2667727
+
+# drink homopily (assortativity alone is for continious)
+assortativity(graph_frw1,drinkw1)   #0.2268404
+assortativity(graph_frw2,drinkw2)   #0.1474536
+assortativity(graph_trw1,drinkw1)   #0.3576762
+assortativity(graph_trw2,drinkw2)   #0.183216
+
+#####  looking at segregation in more detail
+# do girls and boys make equally homophilous friendship choices?
+
+### Friendship selection tables:  (-> nominal comparison)
+# How can we answer the question above? One way is to look at the
+# density of subgraphs (subsets of the network matrix) and create
+# a so-called friendship selection table by counting these four
+# types of friendship ties:
+#     girl -> girl,
+#     girl -> boy,
+#     boy  -> boy,
+#     boy  -> girl.
+
+# sex
+gg.fr1 <- friendship_w1[sex==2,sex==2]
+gb.fr1 <- friendship_w1[sex==2,sex==1]
+bb.fr1 <- friendship_w1[sex==1,sex==1]
+bg.fr1 <- friendship_w1[sex==1,sex==2]
+
+gg.fr2 <- friendship_w2[sex==2,sex==2]
+gb.fr2 <- friendship_w2[sex==2,sex==1]
+bb.fr2 <- friendship_w2[sex==1,sex==1]
+bg.fr2 <- friendship_w2[sex==1,sex==2]
+
+gg.tr1 <- trust_w1[sex==2,sex==2]
+gb.tr1 <- trust_w1[sex==2,sex==1]
+bb.tr1 <- trust_w1[sex==1,sex==1]
+bg.tr1 <- trust_w1[sex==1,sex==2]
+
+gg.tr2 <- trust_w2[sex==2,sex==2]
+gb.tr2 <- trust_w2[sex==2,sex==1]
+bb.tr2 <- trust_w2[sex==1,sex==1]
+bg.tr2 <- trust_w2[sex==1,sex==2]
+
+
+
+friend.selectionw1 <- matrix(NA, 2, 2)
+rownames(friend.selectionw1) <- c("girl", "boy")
+colnames(friend.selectionw1) <- c("girl", "boy")
+
+friend.selectionw2 <- matrix(NA, 2, 2)
+rownames(friend.selectionw2) <- c("girl", "boy")
+colnames(friend.selectionw2) <- c("girl", "boy")
+
+trust.selectionw1 <- matrix(NA, 2, 2)
+rownames(trust.selectionw1) <- c("girl", "boy")
+colnames(trust.selectionw1) <- c("girl", "boy")
+
+trust.selectionw2 <- matrix(NA, 2, 2)
+rownames(trust.selectionw2) <- c("girl", "boy")
+colnames(trust.selectionw2) <- c("girl", "boy")
+
+# do their dimensions match the number of boys and girls in the network?
+table(sex)
+
+dim(gg.fr1)
+dim(gb.fr1)
+dim(bb.fr1)
+dim(bg.fr1)
+
+dim(gg.fr2)
+dim(gb.fr2)
+dim(bb.fr2)
+dim(bg.fr2)
+
+dim(gg.tr1)
+dim(gb.tr1)
+dim(bb.tr1)
+dim(bg.tr1)
+
+dim(gg.tr2)
+dim(gb.tr2)
+dim(bb.tr2)
+dim(bg.tr2)
+
+library(sna)
+
+friend.selectionw1[1,1] <- gden(gg.fr1, diag=FALSE)
+friend.selectionw1[1,2] <- gden(gb.fr1, diag=TRUE)
+friend.selectionw1[2,2] <- gden(bb.fr1, diag=FALSE)
+friend.selectionw1[2,1] <- gden(bg.fr1, diag=TRUE)
+
+friend.selectionw2[1,1] <- gden(gg.fr2, diag=FALSE)
+friend.selectionw2[1,2] <- gden(gb.fr2, diag=TRUE)
+friend.selectionw2[2,2] <- gden(bb.fr2, diag=FALSE)
+friend.selectionw2[2,1] <- gden(bg.fr2, diag=TRUE)
+
+trust.selectionw1[1,1] <- gden(gg.tr1, diag=FALSE)
+trust.selectionw1[1,2] <- gden(gb.tr1, diag=TRUE)
+trust.selectionw1[2,2] <- gden(bb.tr1, diag=FALSE)
+trust.selectionw1[2,1] <- gden(bg.tr1, diag=TRUE)
+
+trust.selectionw2[1,1] <- gden(gg.tr2, diag=FALSE)
+trust.selectionw2[1,2] <- gden(gb.tr2, diag=TRUE)
+trust.selectionw2[2,2] <- gden(bb.tr2, diag=FALSE)
+trust.selectionw2[2,1] <- gden(bg.tr2, diag=TRUE)
+
+friend.selectionw1
+friend.selectionw2
+trust.selectionw1
+trust.selectionw2
+
+# normalize by average density
+(friend.selectionw1.norm <- friend.selectionw1 / gden(friendship_w1))
+friend.selectionw1[1,1]/friend.selectionw1[1,2]   # 5.864211
+friend.selectionw1[2,2]/friend.selectionw1[2,1]   # 17.77922
+# whose friendship choices are more homophilous in wave 1?
+# the odds-ratio of a girl-girl vs. a girl-boy friendship is 5.9
+# the odds ratio for a boy-boy vs. a boy-girl friendship is 17.8
+
+(friend.selectionw2.norm <- friend.selectionw2 / gden(friendship_w2))
+friend.selectionw2[1,1]/friend.selectionw2[1,2]  # 3.853275
+friend.selectionw2[2,2]/friend.selectionw2[2,1]  # 7.2375
+# whose friendship choices are more homophilous in wave 2?
+# the odds-ratio of a girl-girl vs. a girl-boy friendship is 3.9
+# the odds ratio for a boy-boy vs. a boy-girl friendship is 7.24
+
+(trust.selectionw1.norm <- trust.selectionw1 / gden(trust_w1))
+trust.selectionw1[1,1]/trust.selectionw1[1,2] # 17.91333
+trust.selectionw1[2,2]/trust.selectionw1[2,1] # 24.44643
+
+(trust.selectionw2.norm <- trust.selectionw2 / gden(trust_w2))
+trust.selectionw2[1,1]/trust.selectionw2[1,2] # 6.437304
+trust.selectionw2[2,2]/trust.selectionw2[2,1] # 8.730867
+
+
+
+### Selection table with average degrees
+
+# Another way to make the number of ties in same and opposite sex dyads
+# meaningful is to calculate the average degrees in each category. Then
+# the table shows us how many boy friends girls have on average, and so on.
+
+friend.selectionw1.degree <- matrix(NA, 2, 2)
+rownames(friend.selectionw1.degree) <- c("girl", "boy")
+colnames(friend.selectionw1.degree) <- c("girl", "boy")
+friend.selectionw1.degree[1,1] <- mean(degree(gg.fr1, diag=FALSE, cmode="indegree"))
+friend.selectionw1.degree[1,2] <- mean(degree(gb.fr1, diag=TRUE, cmode="indegree"))
+friend.selectionw1.degree[2,2] <- mean(degree(bb.fr1, diag=FALSE, cmode="indegree"))
+friend.selectionw1.degree[2,1] <- mean(degree(bg.fr1, diag=TRUE, cmode="indegree"))
+
+friend.selectionw2.degree <- matrix(NA, 2, 2)
+rownames(friend.selectionw2.degree) <- c("girl", "boy")
+colnames(friend.selectionw2.degree) <- c("girl", "boy")
+friend.selectionw2.degree[1,1] <- mean(degree(gg.fr2, diag=FALSE, cmode="indegree"))
+friend.selectionw2.degree[1,2] <- mean(degree(gb.fr2, diag=TRUE, cmode="indegree"))
+friend.selectionw2.degree[2,2] <- mean(degree(bb.fr2, diag=FALSE, cmode="indegree"))
+friend.selectionw2.degree[2,1] <- mean(degree(bg.fr2, diag=TRUE, cmode="indegree"))
+
+trust.selectionw1.degree <- matrix(NA, 2, 2)
+rownames(trust.selectionw1.degree) <- c("girl", "boy")
+colnames(trust.selectionw1.degree) <- c("girl", "boy")
+trust.selectionw1.degree[1,1] <- mean(degree(gg.tr1, diag=FALSE, cmode="indegree"))
+trust.selectionw1.degree[1,2] <- mean(degree(gb.tr1, diag=TRUE, cmode="indegree"))
+trust.selectionw1.degree[2,2] <- mean(degree(bb.tr1, diag=FALSE, cmode="indegree"))
+trust.selectionw1.degree[2,1] <- mean(degree(bg.tr1, diag=TRUE, cmode="indegree"))
+
+trust.selectionw2.degree <- matrix(NA, 2, 2)
+rownames(trust.selectionw2.degree) <- c("girl", "boy")
+colnames(trust.selectionw2.degree) <- c("girl", "boy")
+trust.selectionw2.degree[1,1] <- mean(degree(gg.tr2, diag=FALSE, cmode="indegree"))
+trust.selectionw2.degree[1,2] <- mean(degree(gb.tr2, diag=TRUE, cmode="indegree"))
+trust.selectionw2.degree[2,2] <- mean(degree(bb.tr2, diag=FALSE, cmode="indegree"))
+trust.selectionw2.degree[2,1] <- mean(degree(bg.tr2, diag=TRUE, cmode="indegree"))
+
+friend.selectionw1.degree
+friend.selectionw2.degree
+trust.selectionw1.degree
+trust.selectionw2.degree
+
+friend.selectionw1.degree[1,1]/friend.selectionw1.degree[1,2] # 4.437781
+friend.selectionw1.degree[2,2]/friend.selectionw1.degree[2,1] # 3.363636
+# the average ratio of a girl-girl vs. a girl-boy friendship is 4.43
+# the average ratio for a boy-boy vs. a boy-girl friendship is 
+
+friend.selectionw2.degree[1,1]/friend.selectionw2.degree[1,2] # 2.851927
+friend.selectionw2.degree[2,2]/friend.selectionw2.degree[2,1] # 1.3875
+
+trust.selectionw1.degree[1,1]/trust.selectionw1.degree[1,2] # 13.55603
+trust.selectionw1.degree[2,2]/trust.selectionw1.degree[2,1] # 4.625
+
+trust.selectionw2.degree[1,1]/trust.selectionw2.degree[1,2] # 4.871473
+trust.selectionw2.degree[2,2]/trust.selectionw2.degree[2,1] # 1.651786
+
+print(friend.selectionw1.degree, digits=2)
+print(friend.selectionw1.norm, digits=2)
+
+print(friend.selectionw2.degree, digits=2)
+print(friend.selectionw2.norm, digits=2)
+
+print(trust.selectionw1.degree, digits=1)
+print(trust.selectionw1.norm, digits=1)
+
+print(trust.selectionw2.degree, digits=1)
+print(trust.selectionw2.norm, digits=2)
+
+
+######################### 2.1.5) SIMILARITY AND TEMPORAL STABILITY
+
+
+# The Hamming distance    --> NOT USEFUL, USE JACCARD
+(hammingfr <- hdist(friendship_w1, friendship_w2))
+(hammingtr <- hdist(trust_w1, trust_w2))
+(hammingfrtr1 <- hdist(friendship_w1, trust_w1))
+(hammingfrtr2 <- hdist(friendship_w2, trust_w2))
+
+# distance proportionate to max distance
+(hammingfr.prop <- hammingfr/nties(friendship_w1)) 
+(hammingtr.prop <- hammingtr/nties(trust_w1)) 
+
+(hammingfrtr1.prop <- hammingfrtr1/nties(friendship_w1))
+(hammingfrtr2.prop <- hammingfrtr2/nties(trust_w1))
+
+hammingfr.prop      #0.1448949
+hammingtr.prop      #0.06531532
+hammingfrtr1.prop   #0.0990991
+hammingfrtr2.prop   #0.09684685
+
+
+# The simple matching coefficient
+# a similar measure but from the point of view of similarity/stability instead of
+# distance/change
+(matchingfr <- 1 - hammingfr.prop)
+(matchingtr <- 1 - hammingtr.prop)
+(matchingfrtr1 <- 1 - hammingfrtr1.prop)
+(matchingfrtr2 <- 1 - hammingfrtr2.prop)
+
+matchingfr     #0.8551051
+matchingtr     #0.9346847
+matchingfrtr1  #0.9009009
+matchingfrtr2  #0.9031532
+
+# The Jaccard index
+# It disregards ties that are absent in both networks
+
+Afr <- sum((friendship_w1 * friendship_w2)==1, na.rm=TRUE) # #ties that exist in both networks
+BplusCfr <- sum((friendship_w1 + friendship_w2)==1, na.rm=TRUE) # #ties that exist in only one network
+(jaccardfr <- Afr/(Afr+BplusCfr)) #0.3754045
+
+Atr <- sum((trust_w1 * trust_w2)==1, na.rm=TRUE) 
+BplusCtr <- sum((trust_w1 + trust_w2)==1, na.rm=TRUE) 
+(jaccardtr <- Atr/(Atr+BplusCtr)) #0.3916084
+
+# this means that less than half of the ties that
+# existed in one wave were stable the next wave
+
+Afrtr1 <- sum((trust_w1 * friendship_w1)==1, na.rm=TRUE) 
+BplusCfrtr1 <- sum((trust_w1 + friendship_w1)==1, na.rm=TRUE) 
+(jaccardfrtr1 <- Afrtr1/(Afrtr1+BplusCfrtr1)) #0.3778802
+
+Afrtr2 <- sum((trust_w2 * friendship_w2)==1, na.rm=TRUE) 
+BplusCfrtr2 <- sum((trust_w2 + friendship_w2)==1, na.rm=TRUE) 
+(jaccardfrtr2 <- Afrtr2/(Afrtr2+BplusCfrtr2)) #0.4292035
+
+
+# this means that about 40% of the ties that existed in the friendship network 
+# were also present in the trust network in each wave
+# Our example was about binary (1-0) networks, but the presented indices can
+# be directly used on or extended to valued networks.
+
+
+######################### 2.1.5) CORRELATIONS BETWEEN NETWORKS -> this is actually already modelling
+
+(qap1.1 <- netlogit(friendship_w1, friendship_w2, nullhyp="qap", reps=1000))
+(qap1.2 <- netlogit(trust_w1, trust_w2, nullhyp="qap", reps=1000))
+str(qap1.1)
+str(qap1.2)
+qap1.1$coefficients[2]
+qap1.2$coefficients[2]
+summary.netlogit(qap1.1)
+
+# what is the effect of same sex on friendship?
+
+same.sex <- sex %*% t(sex)
+same.sex[same.sex==2] <- 0
+same.sex[same.sex==4] <- 1
+
+(qap3 <- netlogit(friendship_w2, list(friendship_w1, same.sex), nullhyp="qap", reps=1000))
+(qap4 <- netlogit(trust_w2, list(trust_w1, same.sex), nullhyp="qap", reps=1000))
+
+(qap5 <- netlogit(friendship_w2, list(friendship_w2, same.sex), nullhyp="qap", reps=1000))
+(qap6 <- netlogit(trust_w2, list(trust_w2, same.sex), nullhyp="qap", reps=1000))
+
+
+
+######################### 2.1.5) DYAD, TRIAD, AND CYCLE CENSUS
+
+
+# count the different dyad types
+detach(package:sand)
+detach(package:igraph)
+
+friendship_w1[is.na(friendship_w1)] <- 0
+friendship_w2[is.na(friendship_w2)] <- 0
+trust_w1[is.na(trust_w1)] <- 0
+trust_w2[is.na(trust_w2)] <- 0
+
+(dyadfr1.count <- dyad.census(friendship_w1))
+(dyadfr2.count <- dyad.census(friendship_w2))
+(dyadtr1.count <- dyad.census(trust_w1))
+(dyadtr2.count <- dyad.census(trust_w2))
+
+# count the different triad types
+
+triadfr1.count <- triad.census(friendship_w1)
+triadfr2.count <- triad.census(friendship_w2)
+triadtr1.count <- triad.census(trust_w1)
+triadtr2.count <- triad.census(trust_w2)
+triadfr1.count
+triadfr2.count
+triadtr1.count
+triadtr2.count
+
+detach(package:igraph)
+library(sna)
+
+#if you want to look at specific triad structure (the triadic relation) of nodes:
+triad.classify(friendship_w1, tri=c(1,5,8))
+triad.classify(friendship_w2, tri=c(1,5,8))
+triad.classify(trust_w1, tri=c(1,5,8))
+triad.classify(trust_w2, tri=c(1,5,8))
+
+
+# cycle
+# let's count the cycles up to length 8 (don't go to high or it will take forever)
+?kcycle.census
+kcycle.census(friendship_w1, maxlen=8, tabulate.by.vertex=FALSE)
+
+# View(friendship_w1)
+rowSums(is.na(friendship_w1))
+which(rowSums(is.na(friendship_w1))>0)
+
+### 3. GENERATING RANDOM GRAPHS
+
+### Bernoulli Random Graph
+### is this useful?:   random.stack <- rgraph(50, 100, tprob=0.1)
+
+### 4. TESTING THE TRIAD CENSUS AGAINST RANDOM NETWORKS
+netfr1.size <- nrow(friendship_w1)
+netfr1.dens <- gden(friendship_w1)
+netfr2.size <- nrow(friendship_w2)
+netfr2.dens <- gden(friendship_w2)
+
+nettr1.size <- nrow(trust_w1)
+nettr1.dens <- gden(trust_w1)
+nettr2.size <- nrow(trust_w2)
+nettr2.dens <- gden(trust_w2)
+
+randomfr1.nets <- rgraph(netfr1.size, 1000, netfr1.dens)
+randomfr2.nets <- rgraph(netfr2.size, 1000, netfr2.dens)
+randomtr1.nets <- rgraph(netfr1.size, 1000, nettr1.dens)
+randomtr2.nets <- rgraph(netfr2.size, 1000, nettr2.dens)
+
+# check: are the densities really distribute around the density of the friendship network?
+randomfr1.dens <- gden(randomfr1.nets)
+hist(randomfr1.dens, col = "royalblue", breaks = 30)
+abline(v=netfr1.dens,col="red")
+mean(randomfr1.dens) # first: 0.1554054, here: 0.1553788   -> so yes
+netfr1.dens
+
+randomfr2.dens <- gden(randomfr2.nets)
+hist(randomfr2.dens, col = "royalblue", breaks = 30)
+abline(v=netfr2.dens,col="red")
+mean(randomfr2.dens)
+netfr2.dens
+
+randomtr1.dens <- gden(randomtr1.nets)
+hist(randomtr1.dens, col = "royalblue", breaks = 30)
+abline(v=nettr1.dens,col="red")
+mean(randomtr1.dens)
+nettr1.dens
+
+randomtr2.dens <- gden(randomtr2.nets)
+hist(randomtr2.dens, col = "royalblue", breaks = 30)
+abline(v=nettr2.dens,col="red")
+mean(randomtr2.dens)
+nettr2.dens
+
+################# zyx is this right?
+randomfr1.dyad <- dyad.census(randomfr1.nets)
+randomfr2.dyad <- dyad.census(randomfr2.nets)
+randomtr1.dyad <- dyad.census(randomtr1.nets)
+randomtr2.dyad <- dyad.census(randomtr2.nets)
+
+randomfr1.triad <- triad.census(randomfr1.nets)
+randomfr2.triad <- triad.census(randomfr2.nets)
+randomtr1.triad <- triad.census(randomtr1.nets)
+randomtr2.triad <- triad.census(randomtr2.nets)
+
+class(randomfr1.triad) # a matrix
+dim(randomfr1.triad)
+
+
+# now we plot the distribution of all closed triangles (in a quite primitive way)
+par(mfrow = c(1,2))
+vioplot(randomfr1.triad[,9], randomfr1.triad[,10], randomfr1.triad[,12],
+        randomfr1.triad[,13], randomfr1.triad[,14], randomfr1.triad[,15], 0,
+        names=colnames(randomfr1.triad)[c(9,10,12,13,14,15,16)], xlab = "Types of triads",
+        col="wheat3", main= "Friendship wave 1", border= "wheat4", colMed= "salmon4", ylab = "Frequency")
+points(1:7, triadfr1.count[c(9,10,12,13,14,15,16)],col="red",type="b",pch=15)
+legend(x=5.5, y=200, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+abline(h=50, col= "grey50")
+
+vioplot(randomfr1.triad[,4], randomfr1.triad[,5], randomfr1.triad[,6],
+        randomfr1.triad[,7], randomfr1.triad[,8], randomfr1.triad[,11],
+        names=colnames(randomfr1.triad)[c(4,5,6,7,8,11)], xlab = "Types of triads",
+        col="wheat3", main= "Friendship wave 1", border= "wheat4", colMed= "salmon4", ylab = "Frequency")
+points(1:6, triadfr1.count[c(4,5,6,7,8,11)],col="red",type="b",pch=15)
+legend(x=4.5, y=840, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+abline(h=200, col= "grey50")
+
+
+# wave 2
+vioplot(randomfr2.triad[,9], randomfr2.triad[,10], randomfr2.triad[,12],
+        randomfr2.triad[,13], randomfr2.triad[,14], randomfr2.triad[,15], 0,
+        names=colnames(randomfr2.triad)[c(9,10,12,13,14,15,16)], xlab = "Types of triads",
+        col="wheat3", main= "Friendship wave 2", border= "wheat4", colMed= "salmon4", ylab = "Frequency")
+points(1:7, triadfr2.count[c(9,10,12,13,14,15,16)],col="red",type="b",pch=15)
+legend(x=5.5, y=230, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+abline(h=50, col= "grey50")
+
+vioplot(randomfr2.triad[,4], randomfr2.triad[,5], randomfr2.triad[,6],
+        randomfr2.triad[,7], randomfr2.triad[,8], randomfr2.triad[,11],
+        names=colnames(randomfr2.triad)[c(4,5,6,7,8,11)], xlab = "Types of triads",
+        col="wheat3", main= "Friendship wave 2", border= "wheat4", colMed= "salmon4", ylab = "Frequency")
+points(1:6, triadfr2.count[c(4,5,6,7,8,11)],col="red",type="b",pch=15)
+legend(x=4.5, y=860, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+abline(h=200, col= "grey50")
+####### trust
+yaxis <- c(0, 60)
+
+vioplot(randomtr1.triad[,4], randomtr1.triad[,5], randomtr1.triad[,6],
+        randomtr1.triad[,7], randomtr1.triad[,8], randomtr1.triad[,11],
+        names=colnames(randomtr1.triad)[c(4,5,6,7,8,11)], xlab = "7 things",
+        col="wheat3", main= "Trust wave 1", border= "wheat4", colMed= "salmon4", ylab = "frequency")
+points(1:6, triadtr1.count[c(4,5,6,7,8,11)],col="red",type="b",pch=15)
+legend(x=4.5, y=300, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+
+vioplot(randomtr1.triad[,9], randomtr1.triad[,10], randomtr1.triad[,12],
+        randomtr1.triad[,13], randomtr1.triad[,14], randomtr1.triad[,15], 0,
+        names=colnames(randomfr1.triad)[c(9,10,12,13,14,15,16)], xlab = "7 things",
+        col="wheat3", main= "Trust wave 1", border= "wheat4", colMed= "salmon4", ylab = "frequency",
+        ylim=yaxis)
+points(1:7, triadfr1.count[c(9,10,12,13,14,15,16)],col="red",type="b",pch=15)
+legend(x=5.8, y=61, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+
+# wave 2
+vioplot(randomtr2.triad[,4], randomtr2.triad[,5], randomtr2.triad[,6],
+        randomtr2.triad[,7], randomtr2.triad[,8], randomtr2.triad[,11],
+        names=colnames(randomtr2.triad)[c(4,5,6,7,8,11)], xlab = "7 things",
+        col="wheat3", main= "Trust wave 2", border= "wheat4", colMed= "salmon4", ylab = "frequency")
+points(1:6, triadtr2.count[c(4,5,6,7,8,11)],col="red",type="b",pch=15)
+legend(x=5, y=370, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+
+vioplot(randomtr2.triad[,9], randomtr2.triad[,10], randomtr2.triad[,12],
+        randomtr2.triad[,13], randomtr2.triad[,14], randomtr2.triad[,15], 0,
+        names=colnames(randomfr2.triad)[c(9,10,12,13,14,15,16)], xlab = "7 things",
+        col="wheat3", main= "Trust wave 2", border= "wheat4", colMed= "salmon4", ylab = "frequency",
+        ylim=yaxis)
+points(1:7, triadfr2.count[c(9,10,12,13,14,15,16)],col="red",type="b",pch=15)
+legend(x=5.8, y=61, legend=c("observed"), fill = "red", border = F, box.col = "transparent")
+par(mfrow = c(1,1))
+
+
+
+######################### 2.1.6) Blockmodeling
+
+
+# we cluster the actors based on some measure of similarity
+equiv.fr1 <- equiv.clust(friendship_w1, cluster.method="ward.D2", method="hamming")
+equiv.fr2 <- equiv.clust(friendship_w2, cluster.method="ward.D2", method="hamming")
+equiv.tr1 <- equiv.clust(trust_w1, cluster.method="ward.D2", method="hamming")
+equiv.tr2 <- equiv.clust(trust_w2, cluster.method="ward.D2", method="hamming")
+
+par(mfrow = c(1,1))
+
+plot(equiv.fr1, xlab = "lol", hang = -0.1, cex = 0.74)
+plot(equiv.fr2, xlab = "lol", hang = -0.1, cex = 0.74)
+plot(equiv.tr1, xlab = "lol", hang = -0.1, cex = 0.74)
+plot(equiv.tr2, xlab = "lol", hang = -0.1, cex = 0.74)
+
+#View(friendship_w2)
+
+bm.fr1 <- blockmodel(friendship_w1, equiv.fr1, k=9)
+bm.fr2 <- blockmodel(friendship_w2, equiv.fr2, k=9)
+bm.tr1 <- blockmodel(trust_w1, equiv.tr1, k=9)
+bm.tr2 <- blockmodel(trust_w2, equiv.tr2, k=9)
+
+#blockmodel
+plot.sociomatrix(friendship_w1, diaglab=FALSE, cex = 0.67, main = "blockmodel friendship wave 1")
+plot.sociomatrix(friendship_w2, diaglab=FALSE, cex = 0.67, main = "blockmodel friendship wave 2")
+plot.sociomatrix(trust_w1, diaglab=FALSE, cex = 0.67, main = "blockmodel trust wave 1")
+plot.sociomatrix(trust_w2, diaglab=FALSE, cex = 0.67, main = "blockmodel trust wave 2")
+
+
+plot.sociomatrix(bm.fr1$blocked.data, diaglab=FALSE, main = "blockmodel matrix fr1", cex.lab = 0.67)
+plot.sociomatrix(bm.fr2$blocked.data, diaglab=FALSE, main = "blockmodel matrix fr2", cex.lab = 0.67)
+plot.sociomatrix(bm.tr1$blocked.data, diaglab=FALSE, main = "blockmodel matrix tr1", cex.lab = 0.67)
+plot.sociomatrix(bm.tr2$blocked.data, diaglab=FALSE, main = "blockmodel matrix tr2", cex.lab = 0.67)
+
+# inspection
+str(bm.fr1, 1)
+str(bm.fr2, 1)
+str(bm.tr1, 1)
+str(bm.tr2, 1)
+
+# ordering
+bm.fr1$order.vector
+bm.fr2$order.vector
+bm.tr1$order.vector
+bm.tr2$order.vector
+
+# get the block membership in the right order
+block.membersfr1 <- bm.fr1$block.membership[order(bm.fr1$order.vector)]
+block.membersfr2 <- bm.fr2$block.membership[order(bm.fr2$order.vector)]
+block.memberstr1 <- bm.tr1$block.membership[order(bm.tr1$order.vector)]
+block.memberstr2 <- bm.tr2$block.membership[order(bm.tr1$order.vector)]
+
+
+############### yzx the "blockmodel" package is better
+mypal <- c("rosybrown2","steelblue2","peru", "snow3", "darkolivegreen3", "orange", 
+           "darkorchid2","gold1", "firebrick1")
+sidenum <- c(4,100)
+edgecol <- c("royalblue", "firebrick1")
+par(mfrow = c(1,1))
+
+gplot(friendship_w1, vertex.col=mypal[block.membersfr1], vertex.cex = (friend_outd_w1+15)/10, 
+      label = colnames(friendship_w1), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col="grey30", label.border = T, main = "Friendship wave 1",
+      mode = "fruchtermanreingold", arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),
+       box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(friendship_w2, vertex.col=mypal[block.membersfr2], vertex.cex = (friend_outd_w2+15)/10, 
+      label = colnames(friendship_w2), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Friendship wave 2", 
+      mode = "fruchtermanreingold", arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(trust_w1, vertex.col=mypal[block.memberstr1], vertex.cex = (trust_outd_w1+15)/10, 
+      label = colnames(trust_w1), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Trust wave 1", 
+      mode = "fruchtermanreingold", arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(trust_w2, vertex.col=mypal[block.memberstr2], vertex.cex = (trust_outd_w2+15)/10, 
+      label = colnames(trust_w2), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Trust wave 2", 
+      mode = "fruchtermanreingold", arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+#connectedness
+cfriend.1 <- component.largest(friendship_w1, connected="weak", result="graph")
+cfriend.2 <- component.largest(friendship_w2, connected="weak", result="graph")
+ctrust.1 <- component.largest(trust_w1, connected="weak", result="graph")
+ctrust.2 <- component.largest(trust_w2, connected="weak", result="graph")
+
+gplot(cfriend.1, vertex.col=mypal[block.membersfr1], vertex.cex = (friend_outd_w1+15)/10, 
+      label = colnames(friendship_w1), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Friendship connectedness wave 1",
+      arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(cfriend.2, vertex.col=mypal[block.membersfr2], vertex.cex = (friend_outd_w2+15)/10, 
+      label = colnames(friendship_w2), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Friendship connectedness wave 2",
+      arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(ctrust.1, vertex.col=mypal[block.memberstr1], vertex.cex = (trust_outd_w1+15)/11, 
+      label = colnames(trust_w1), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Trust connectedness wave 1",
+      arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+gplot(ctrust.2, vertex.col=mypal[block.memberstr2], vertex.cex = (trust_outd_w2+15)/11, 
+      label = colnames(trust_w2), label.pos=5, label.cex= 1, label.col = "black",
+      edge.col= "grey25", label.border = T, main = "Trust connectedness wave 2",
+      arrowhead.cex = .5, edge.lwd = 0.5, vertex.sides=sidenum[sex])
+legend("bottomleft",legend=c("Male","female"),box.col = "transparent",pch=c(5,1),pt.cex=1.5,title="Sex")
+
+### END OF SCRIPT - PLEASE OPEN: "8_Cliques_and_Communities.R"
+
+# for this example, we will use igraph functions that are implemented for undirected
+# networks only, unfortunately
+friendship_uniw1 <- friendship_w1 + t(friendship_w1) # check table(friend.w1) to see what happened
+table(friendship_w1)
+friendship_uniw1[friendship_uniw1==2] <- 1
+
+friendship_uniw2 <- friendship_w2 + t(friendship_w2) # check table(friend.w1) to see what happened
+table(friendship_uniw2)
+friendship_w2[friendship_uniw2==2] <- 1
+
+trust_uniw1 <- trust_w1 + t(trust_w1)
+trust_uniw2 <- trust_w2 + t(trust_w2)
+
+table(trust_uniw1)
+
+trust_uniw1[trust_uniw1==2] <- 1
+trust_uniw2[trust_uniw2==2] <- 1
+
+
+detach(package:sna)
+library(igraph)
+
+# How small is our analyzed community in this sense?
+# Let's put the data into igraph format
+friendsw1 <- graph.adjacency(friendship_uniw1)
+friendsw2 <- graph.adjacency(friendship_uniw2)
+trustsw1 <- graph.adjacency(trust_uniw1)
+trustsw2 <- graph.adjacency(trust_uniw2)
+
+friendsw1 <- as.undirected(friendsw1)
+friendsw2 <- as.undirected(friendsw2)
+trustsw1 <- as.undirected(trustsw1)
+trustsw2 <- as.undirected(trustsw2)
+
+is.connected(friendsw1)
+is.connected(friendsw2)
+is.connected(trustsw1)
+is.connected(trustsw2)
+
+# how many components of different size are there?
+componentsfr1 <- decompose.graph(friendsw1)
+componentsfr2 <- decompose.graph(friendsw2)
+componentstr1 <- decompose.graph(trustsw1)
+componentstr2 <- decompose.graph(trustsw2)
+
+# count the nodes in each component and make a frequency table
+table(sapply(componentsfr1, vcount))
+table(sapply(componentsfr2, vcount))
+table(sapply(componentstr1, vcount))
+table(sapply(componentstr2, vcount))
+
+main.componentfr1 <- componentsfr1[[1]]
+main.componentfr2 <- componentsfr2[[1]]
+main.componenttr1 <- componentstr1[[1]]
+main.componenttr2 <- componentstr2[[1]]
+
+main.componentfr1.members <- as.numeric(substr(names(V(main.componentfr1)),2,3))
+main.component.members <- as.numeric(substr(names(V(main.componentfr2)),2,3))
+main.component.members <- as.numeric(substr(names(V(main.componenttr1)),2,3))
+main.component.members <- as.numeric(substr(names(V(main.componenttr2)),2,3))
+
+average.path.length(main.componentfr1)
+average.path.length(main.componentfr2)
+average.path.length(main.componenttr1)
+average.path.length(main.componenttr2)
+
+diameter(main.componentfr1)
+diameter(main.componentfr2)
+diameter(main.componenttr1)
+diameter(main.componenttr2)
+
+transitivity(main.componentfr1)
+transitivity(main.component)
+transitivity(main.component)
+transitivity(main.component)
+
+random.nets <- sna::rgraph(33,200,edge_density(main.componentfr1, loops=F),mode="graph")
+rnGdist<-numeric();for(i in 1:200){rnGdist<-c(rnGdist,max(sna::geodist(random.nets[i,,])$gdist))}
+rnGtrans<-sna::gtrans(random.nets, mode="graph")
+mean(rnGdist[!rnGdist%in%Inf])
+diameter(main.componentfr1)
+mean(rnGtrans)
+ 
+random.nets <- sna::rgraph(33,200,edge_density(main.componentfr2, loops=F),mode="graph")
+rnGdist<-numeric();for(i in 1:200){rnGdist<-c(rnGdist,max(sna::geodist(random.nets[i,,])$gdist))}
+rnGtrans<-sna::gtrans(random.nets, mode="graph")
+mean(rnGdist[!rnGdist%in%Inf])
+diameter(main.componentfr2)
+mean(rnGtrans)    
+
+random.nets <- sna::rgraph(33,200,edge_density(main.componenttr1, loops=F),mode="graph")
+rnGdist<-numeric();for(i in 1:200){rnGdist<-c(rnGdist,max(sna::geodist(random.nets[i,,])$gdist))}
+rnGtrans<-sna::gtrans(random.nets, mode="graph")
+mean(rnGdist[!rnGdist%in%Inf])
+diameter(main.componenttr1)
+mean(rnGtrans) 
+
+random.nets <- sna::rgraph(33,200,edge_density(main.componenttr2, loops=F),mode="graph")
+rnGdist<-numeric();for(i in 1:200){rnGdist<-c(rnGdist,max(sna::geodist(random.nets[i,,])$gdist))}
+rnGtrans<-sna::gtrans(random.nets, mode="graph")
+mean(rnGdist[!rnGdist%in%Inf])
+diameter(main.componenttr2)
+mean(rnGtrans) 
+
+# part 3: CLIQUES AND CORES
+
+cliquesfr1 <- cliques(friendsw1)
+cliquesfr2 <- cliques(friendsw2)
+cliquestr1 <- cliques(trustsw1)
+cliquestr2 <- cliques(trustsw2)
+
+
+length(cliquesfr1)
+table(sapply(maximal.cliques(friendsw1), length))
+
+# a set of nodes form a k-core in a network if all nodes in the set have at least
+# k ties within the set (in other words in the subgraph defined by the nodes)
+# we can assign a k for each node in the network
+cores <- graph.coreness(friendsw1)
+
+plot(friendsw1, edge.color = "black",
+     edge.width = 1, edge.arrow.size = 0.3, vertex.size = 9, vertex.label = colnames(friendship_w2),
+     vertex.color= cores, vertex.label.color="grey1", vertex.shape = ifelse(sex== 1, "square", "circle"),
+     vertex.size = (((friend_ind_w1+1)/1.5)+5),layout=myLayoutfr, main = "Friendship cliques wave 1",
+     )
+legend(x = -2, y = -.5,legend=c("Male","female"))
+?legend
+
+#??? part 4       -> p60 big book
+## aze
+
+clusteredgebetweenness
+
+communitiesEBfr1 <- cluster_edge_betweenness(graph_frw1) # directed is possible here so you can use graph_frw1
+communitiesIMfr1 <- cluster_infomap(friendsw1)
+communitiesFGfr1 <- fastgreedy.community(friendsw1)
+
+# how many communities were identified by the algorithm?
+length(communitiesFGfr1) #4
+length(communitiesEBfr1) #11
+length(communitiesIMfr1) #6
+
+# shat are their sizes?
+sizes(communitiesFGfr1) 
+sizes(communitiesEBfr1)
+sizes(communitiesIMfr1)
+
+membership(communitiesFGfr1) # who belongs to which community?
+membership(communitiesEBfr1) 
+membership(communitiesIMfr1) 
+
+
+plot(communitiesFGfr1, friendsw1,edge.color = "black", edge.width = 1, edge.arrow.size = 0.3,
+     vertex.size = 9, vertex.label = colnames(friendship_w2), vertex.shape = ifelse(sex== 1, "square", "circle"),
+     layout=myLayoutfr,main = "Friendship FG wave 1",vertex.size = ((friend_ind_w1+1)/1.5)+5)
+
+plot(communitiesEBfr1, friendsw1,edge.color = "black", edge.width = 1, edge.arrow.size = 0.3,
+     vertex.size = 9, vertex.label = colnames(friendship_w2), vertex.shape = ifelse(sex== 1, "square", "circle"),
+     layout=myLayoutfr,main = "Friendship EB wave 1",vertex.size = ((friend_ind_w1+1)/1.5)+5)
+
+plot(communitiesIMfr1, friendsw1,edge.color = "black", edge.width = 1, edge.arrow.size = 0.3,
+     vertex.size = 9, vertex.label = colnames(friendship_w2), vertex.shape = ifelse(sex== 1, "square", "circle"),
+     layout=myLayoutfr,main = "Friendship IM wave 1",vertex.size = ((friend_ind_w1+1)/1.5)+5)
+
+
+######################### 
+#########################  2.2)  Visualization
+######################### 
+
+
+######################### 2.2.1) preperation
+
+# that will make the nodes look better
+# actually only one needs to be renamed, in this file it is colnames(friendship_w1)
+# that will always be used
+# for ggnet2 you do need to rename the rows and cols
+
+colnames(friendship_w1) <- c(1:37)
+rownames(friendship_w1) <- c(1:37)
+colnames(friendship_w2) <- c(1:37)
+rownames(friendship_w2) <- c(1:37)
+
+colnames(trust_w1) <- c(1:37)
+rownames(trust_w1) <- c(1:37)
+colnames(trust_w2) <- c(1:37)
+rownames(trust_w2) <- c(1:37)
+
+# Layouts
+graph.fr12 <- graph.adjacency(friendship_w1 + friendship_w2)
+myLayoutfr <- layout.fruchterman.reingold(graph.fr12)
+graph.tr12 <- graph.adjacency(trust_w1 + trust_w2)
+myLayouttr <- layout.fruchterman.reingold(graph.tr12)
+
+
+######################### 2.2.2) GGally package
+
+color = ifelse(sex==1, "royalblue3", "firebrick1")
+ggnet2(network(friendship_w1, directed = TRUE), arrow.size = 4, arrow.gap = 0.015,
+       node.size = deg.fr, node.color = ifelse(sex==1, "royalblue3", "firebrick1"),
+       edge.size = 0.8, edge.color = c("color", "grey1"), edge.alpha=0.5,
+       label=T, label.size=3, label.color= "black", size = "indegree", size.cut = 6)
+ggnet2(network(friendship_w2, directed = TRUE), arrow.size = 4, arrow.gap = 0.015,
+       node.size = deg.fr, node.color = ifelse(sex==1, "royalblue3", "firebrick1"),
+       edge.size = 0.8, edge.color = c("color", "grey1"), edge.alpha=0.5,
+       label=T, label.size=3, label.color= "black", size = "indegree", size.cut = 6)
+
+ggnet2(network(trust_w1, directed = TRUE), arrow.size = 4, arrow.gap = 0.015,
+       node.size = indeg.tr1, node.color = ifelse(sex==1, "royalblue3", "firebrick1"),
+       edge.size = 0.8, edge.color = c("color", "grey1"), edge.alpha=0.5,
+       label=T, label.size=3, label.color= "black", size = "indegree", size.cut = 6)
+ggnet2(network(trust_w2, directed = TRUE), arrow.size = 4, arrow.gap = 0.015,
+       node.size = indeg.tr2, node.color = ifelse(sex==1, "royalblue3", "firebrick1"),
+       edge.size = 0.8, edge.color = c("color", "grey1"), edge.alpha=0.5,
+       label=T, label.size=3, label.color= "black", size = "indegree", size.cut = 6)
+
+
+######################### 2.2.2) igraph PACKAGE
+
+par(mfrow = c(1, 1))
+plot(graph_frw1, vertex.color = ifelse(sex== 2, "firebrick1", "royalblue3"),
+     vertex.shape = ifelse(sex== 1, "square", "circle"),
+     vertex.size = ((friend_ind_w1+1)/1.5)+5,
+     edge.color = "grey20",
+     edge.width = 1,edge.arrow.size = 0.3,                       
+     vertex.label = colnames(friendship_w1), vertex.label.color="grey1", layout = myLayoutfr,
+     main = "Friendship network wave 1", sub = "indegree size dependent")
+plot(graph_frw2,
+     vertex.color = ifelse(sex== 2, "firebrick1", "royalblue3"),
+     vertex.shape = ifelse(sex== 1, "square", "circle"),
+     vertex.size = ((friend_ind_w2+1)/1.5)+5,                     #size dependent on indegree
+     edge.color = "grey20",
+     edge.width = 1,
+     edge.arrow.size = 0.3,
+     vertex.size = 9,
+     vertex.label = colnames(friendship_w2),
+     vertex.label.color="grey1",
+     layout = myLayoutfr,
+     main = "Friendship network wave 2", sub = "indegree size dependent")
+
+plot(graph_trw1, vertex.color = ifelse(sex== 2, "firebrick1", "royalblue3"),
+     vertex.shape = ifelse(sex== 1, "square", "circle"),
+     edge.color = "grey20",edge.width = 1,edge.arrow.size = 0.1,
+     vertex.size = ((trust_ind_w1+1)/1.5)+5,                               
+     vertex.label = colnames(trust_w1), vertex.label.color="grey1", layout = myLayouttr,
+     main = "Trust network wave 1", sub = "indegree size dependent")
+
+plot(graph_trw2, vertex.color = ifelse(sex== 2, "firebrick1", "royalblue3"),
+     vertex.shape = ifelse(sex== 1, "square", "circle"),
+     edge.color = "grey20",edge.width = 1,edge.arrow.size = 0.1,
+     vertex.size = ((trust_ind_w2+1)/1.5)+5,                               
+     vertex.label = colnames(trust_w2), vertex.label.color="grey1", layout = myLayouttr,
+     main = "Trust network wave 2", sub = "indegree size dependent")
+par(mfrow = c(1, 1))
+
+
+######################### 2.2.2) homophily on drinking
+
+# How much do you think sex homohily explains clustering in the class?
+
+drinkcol <- c("chartreuse3","gold1","darkorange1", "firebrick2")
+plot(graph_frw1, vertex.color = drinkcol[drinkw1],
+     vertex.shape = ifelse(sex == 1, "square", "circle"), edge.color = "black",
+     edge.width = 0.8, edge.arrow.size = 0.2, vertex.size = 10,
+     layout = myLayoutfr, vertex.label.color="grey1",
+     main = "Friendship wave 1")
+plot(graph_frw2, vertex.color = drinkcol[drinkw2],
+     vertex.shape = ifelse(sex == 1, "square", "circle"), edge.width = 0.8,
+     edge.color = "black", edge.arrow.size = 0.2, vertex.size = 10, 
+     layout = myLayoutfr, vertex.label.color="grey1",
+     vertex.label = colnames(friendship_w2), main = "Friendship wave 2")
+
+plot(graph_trw1, vertex.color = drinkcol[drinkw1],
+     vertex.shape = ifelse(sex == 1, "square", "circle"), edge.color = "black",
+     edge.width = 0.8, edge.arrow.size = 0.2, vertex.size = 10,
+     layout = myLayouttr, vertex.label.color="grey1",
+     main = "Trust wave 1")
+plot(graph_trw2, vertex.color = drinkcol[drinkw2],
+     vertex.shape = ifelse(sex == 1, "square", "circle"), edge.width = 0.8,
+     edge.color = "black", edge.arrow.size = 0.2, vertex.size = 10, 
+     layout = myLayouttr, vertex.label.color="grey1",
+     vertex.label = colnames(friendship_w2), main = "Trust wave 2")
+
+
+######################### 2.2.3) centrality
+
+sna::gplot.target(friendship_w1, 
+                  degree(friendship_w1),
+                  #closeness(friendship_w1),
+                  #betweenness(friendship_w1),
+                  circ.lab = FALSE,            
+                  circ.col="skyblue", usearrows = T,  main="Degree friendship wave 1", label = colnames(trust_w1),      
+                  vertex.col=ifelse(sex==1, "royalblue3", "firebrick1"), label.pos=5, label.cex= 0.8,
+                  edge.col="darkgray", arrowhead.cex = .5)
+
+sna::gplot.target(friendship_w2, degree(friendship_w2), circ.lab = FALSE,            
+                  circ.col="skyblue", usearrows = T,  main="Degree friendship wave 2", label = colnames(trust_w1),      
+                  vertex.col=ifelse(sex==1, "royalblue3", "firebrick1"), label.pos=5, label.cex= 0.8,
+                  edge.col="darkgray", arrowhead.cex = .5)
+
+sna::gplot.target(friendship_w1, degree(friendship_w1), circ.lab = FALSE,            
+                  circ.col="skyblue", usearrows = T,  main="Degree", label = colnames(trust_w1),      
+                  vertex.col=drinkcol[drinkw1], label.pos=5, label.cex= 0.8,
+                  edge.col="darkgray", arrowhead.cex = .5)
+
+#-------------------------------------------------------------------------
+#########################                       #########################|
+#########################                       #########################|
+#########################    2) Modelling       #########################|
+#########################                       #########################|
+#########################                       #########################|
+#-------------------------------------------------------------------------
+
+
+######################### 
+#########################  2.1)  ERGMs
+######################### 
+
+# #########################################################
+# ####################  Friendship ########################    
+# #########################################################
+
+# ############################
+# ######## Wave 1 ############     
+# ############################
+
+library(ergm)
+load("examendeadERGMS.RData")
+getwd()
+
+friendnet1 <- network(friendship_w1)
+friendnet2 <- network(friendship_w2)
+trustnet1 <- network(trust_w1)
+trustnet2 <- network(trust_w2)
+
+gendernet <- unlist(read.table(file="RECENS_data/4400_sex.csv",
+                               header=TRUE, row.names=1, sep=","))
+
+# you can add vertex/node/actor attributes
+friendnet1 %v% "drink" <- drinkw1
+friendnet2 %v% "drink" <- drinkw2
+trustnet1 %v% "drink" <- drinkw1
+trustnet2 %v% "drink" <- drinkw2
+
+friendnet1 %v% "sex" <- gendernet
+friendnet2 %v% "sex" <- gendernet
+trustnet1 %v% "sex" <- gendernet
+trustnet2 %v% "sex" <- gendernet
+
+# what do we get?
+class(friendnet1) # network object
+mode(friendnet1)  # of list mode
+friendnet1        # some more information
+View(friendnet1)
+
+# nActorsfr1     -> what is this?
+
+??"ergm-terms"
+#####  always start with empty model to see how it improves
+ergmfr1.1 <- ergm(friendnet1~edges, control=control.ergm(seed=40))   # set seed so replication is possible
+ergmfr1.1
+summary(ergmfr1.1)
+
+
+
+#### aze
+scatter.smooth(friendnet1%v%'drink',degree(friendship_w1,gmode='graph'),
+               xlab='drink',ylab='Degree', col=rgb(0,100,0,50,maxColorValue=255), pch=16)
+
+# friendship
+plot(jitter(friendnet1%v%'drink'),degree(friendship_w1,gmode='graph'), main="friendship wave 1",
+     xlab="Drink ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(friendnet1%v%'drink',degree(friendship_w1,gmode='graph')), col="blue")
+
+plot(jitter(friendnet2%v%'drink'),degree(friendship_w2,gmode='graph'), main="friendship wave 2",
+     xlab="Drink ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(friendnet2%v%'drink',degree(friendship_w2,gmode='graph')), col="blue")
+
+plot(jitter(friendnet1%v%'sex', 0.2),degree(friendship_w1,gmode='graph'), main="friendship wave 1",
+     xlab="sex", ylab="Degree ", pch=19, ylim = c(0,15),col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(friendnet1%v%'sex',degree(friendship_w1,gmode='graph')), col="blue")
+
+plot(jitter(friendnet2%v%'sex', 0.2),degree(friendship_w2,gmode='graph'), main="friendship wave 2",
+     xlab="sex", ylab="Degree ", ylim = c(0,15),pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(friendnet2%v%'sex',degree(friendship_w2,gmode='graph')), col="blue")
+
+# trust
+plot(jitter(trustnet1%v%'drink', 0.5),degree(trust_w1,gmode='graph'), main="trust wave 1",
+     xlab="Drink ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(trustnet1%v%'drink',degree(trust_w1,gmode='graph')), col="blue")
+
+plot(jitter(trustnet2%v%'drink',0.5),degree(trust_w2,gmode='graph'), main="trust wave 2",
+     xlab="Drink ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(trustnet2%v%'drink',degree(trust_w2,gmode='graph')), col="blue")
+
+plot(jitter(trustnet1%v%'sex',0.5),degree(trust_w1,gmode='graph'), main="trust wave 1",
+     xlab="Sex ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(trustnet1%v%'sex',degree(trust_w1,gmode='graph')), col="blue")
+
+plot(jitter(trustnet2%v%'sex',0.5),degree(trust_w2,gmode='graph'), main="trust wave 2",
+     xlab="Sex ", ylab="Degree ", pch=19, col=rgb(0,100,0,50,maxColorValue=255))
+lines(lowess(trustnet2%v%'sex',degree(trust_w2,gmode='graph')), col="blue")
+
+ergmfr1.1.2 <- ergm(friendnet1~edges + nodecov('drink') + nodefactor('sex'),
+                    control=control.ergm(seed=40))
+summary(ergmfr1.1)
+summary(ergmfr1.1.2)
+
+
+mixingmatrix(friendnet1,'drink')
+
+#This is a homophilyhypothesis, where we are testing if the PEOPLE THAT DRINK AS MUCH
+#are more likely to  be friends with one another. The positive and significant parameter 
+#indicates that there is a homophily effect here   -> nodematch
+
+ergmfr1.1.3 <- ergm(friendnet1~edges + nodecov('drink') + nodefactor('sex') + 
+                      nodematch('drink'), control=control.ergm(seed=40))
+summary(ergmfr1.1.3)
+
+# nodematch('sex')  - > not significant
+ergmfr1.1.4 <- ergm(friendnet1~edges + nodecov('drink') + nodefactor('sex') + nodematch('drink')
+                    + nodematch('sex'),control=control.ergm(seed=40))
+summary(ergmfr1.1.4)
+
+# how to test a hypothesis of differential homophily. Here, in-stead of one dyad term, 
+# there are one for every category; one each for the levels of the drink characteristic. 
+# Thus, this model now has four homophily terms. 
+# The results suggest that there is no differential homophily.
+
+# not signi
+ergmfr1.1.5 <- ergm(friendnet1~edges + nodecov('drink') + nodefactor('sex') 
+                    + nodematch('drink',diff=TRUE),control=control.ergm(seed=40))
+summary(ergmfr1.1.5)
+
+# The nodemix term includes dyadic comparisons for all the possiblepatterns of 
+# a categorical node attribute. Thebaseoption sets a reference categoryfor the effects, 
+# otherwise all possible effects are included
+
+# 3-1, 1-3, 2-3 and 3-2 are signi, others not
+ergmfr1.1.6 <- ergm(friendnet1~edges +
+                      nodecov('drink') + nodefactor('sex') + nodemix('drink',base=1),
+                    control=control.ergm(seed=40))
+summary(ergmfr1.1.6)
+
+
+# We expect that friends who have more trust in each other will be 
+# more likely to drink.
+# Second, we also expect that the further apart two agencies are, 
+# the less likely they will be todisseminate information to each other.
+
+# signi but nodecov('drink') + nodefactor('sex') + nodematch('drink') become non signi
+ergmfr1.1.7 <- ergm(friendnet1~edges + nodecov('drink') + nodefactor('sex') + nodematch('drink') +
+                      edgecov(trustnet1), control=control.ergm(seed=40))
+summary(ergmfr1.1.7)
+
+
+ergmfr1.1.8 <- ergm(friendnet1~edges +
+                      edgecov(trustnet1), control=control.ergm(seed=40))
+summary(ergmfr1.1.8)
+
+# adding reciprocity impoves
+ergmfr1.1.9 <- ergm(friendnet1~edges + 
+                      edgecov(trustnet1) + gwesp(0.7,fixed=TRUE),
+                    control=control.ergm(seed=40, parallel=2, parallel.type="PSOCK"))
+summary(ergmfr1.1.9)
+
+# so now sex is significant again
+ergmfr1.1.10 <- ergm(friendnet1~edges + nodefactor('sex')  + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE) 
+                     + nodecov('drink') + nodematch('drink'),   # not signi ones
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.10)
+
+ergmfr1.1.11 <- ergm(friendnet1~edges + nodefactor('sex') + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.11)
+
+
+#??? no this doesnt do anything
+ergmfr1.1.12 <- ergm(friendnet1~edges + nodefactor('sex') + nodematch("drink") +
+                       edgecov(trustnet1) + gwesp(0.7,fixed=TRUE),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.12)
+
+ergmfr1.1.11.fit <- gof(ergmfr1.1.12,GOF= ~distance+espartners+triadcensus,
+                        burnin=1e+5,interval=1e+5)
+summary(ergmfr1.1.11.fit)
+
+op<-par(mfrow=c(2,2))
+plot(ergmfr1.1.11.fit,cex.axis=1.6,cex.label=1.6)
+par(op)
+mcmc.diagnostics(ergmfr1.1.11)
+
+
+
+# okey lets put ostar and m2star in
+ergmfr1.1.13 <- ergm(friendnet1~edges + nodefactor('sex') + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE) 
+                     +ostar(2)+m2star+istar(2),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.13)
+
+# ostar was not significant (also sex was not)
+ergmfr1.1.14 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star+istar(2),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.14)
+
+# k now without nodefactor(sex) but with nodematch("sex") and with triangle
+# sex stays not significant
+# ok i found out later gwesp is another measure for triangles
+ergmfr1.1.15 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star+istar(2)
+                     + triangle,
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.15)
+
+# Is there a statistically significant tendency for ties to be reciprocated ('mutuality')?
+# yes model went down (AIC en BIC) but triangle, sex and istar2 not significant
+ergmfr1.1.16 <- ergm(friendnet1~edges  + edgecov(trustnet1)+gwesp(0.7,fixed=TRUE)+m2star+istar(2) + triangle 
+                     + mutual,
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.16)
+
+# it improved a little
+ergmfr1.1.17 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star 
+                     + mutual,
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.17)
+
+#making sure drink really doesnt do anything
+# it doesn't, throw it out again, stick with 1.1.17
+ergmfr1.1.18 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star
+                     + mutual + nodecov('drink'),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.18)
+
+# only sex 1 is very signi but it doesn't make the model much better (AIC drops 1 or 2 points)
+ergmfr1.1.19.1 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star + mutual
+                       + nodematch('sex',diff=TRUE),
+                       control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.19.1)
+mcmc.diagnostics(ergmfr1.1.19.1)
+
+# not signi -> no main effect of gender
+ergmfr1.1.20 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star + mutual
+                     + nodefactor('sex'),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.20)
+
+
+# signi but problems with estimates for sex 1
+ergmfr1.1.21 <- ergm(friendnet1~edges + edgecov(trustnet1) + gwesp(0.7,fixed=TRUE)+m2star +mutual
+                     + nodematch('sex',diff=TRUE),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.21)
+mcmc.diagnostics(ergmfr1.1.21)
+
+# look at it more detailed
+ergmfr1.1.22 <- ergm(friendnet1~edges 
+                     + edgecov(trustnet1) 
+                     + gwesp(0.7,fixed=TRUE)
+                     + m2star 
+                     + mutual
+                     + nodemix('sex', base = 1),   # signi
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.22)
+mcmc.diagnostics(ergmfr1.1.22)
+
+ergmfr1.1.22.gof <- gof(ergmfr1.1.22~idegree)
+ergmfr1.1.22.gof
+plot(ergmfr1.1.22.gof)
+
+
+# now increase sampling
+ergmfr1.1.23 <- ergm(friendnet1~edges 
+                     + edgecov(trustnet1) 
+                     + gwesp(0.7,fixed=TRUE)
+                     + m2star 
+                     + ostar(2)
+                     + mutual
+                     + idegreepopularity,
+                     # + triadcensus('021C') #030T, 300, 120C(almost signi), '111U'
+                     # + transitive   # not signi
+                     # + nodeocov('drink')    #are people that drink more, like more other people
+                     # + nodeicov('drink')    #are people that drink more, more popular
+                     # + absdiff("drink")     #people that differ more in drinking behavior more/less likely to form tie
+                     #+ nodemix('sex', base = 0),
+                     control=control.ergm(MCMC.burnin=1000, seed=41, MCMC.samplesize=4000, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.23)
+mcmc.diagnostics(ergmfr1.1.23)
+
+ergmfr1.1.23.gof <- gof(ergmfr1.1.23~idegree)
+ergmfr1.1.23.gof
+plot(ergmfr1.1.23.gof)
+
+
+ergmfr1.1.19.1 <- ergm(friendnet1~edges 
+                       + edgecov(trustnet1) 
+                       + gwesp(0.7,fixed=TRUE)
+                       + m2star
+                       + ostar(2)
+                       + mutual
+                       + nodemix('sex',base=1) ,
+                       control=control.ergm(MCMC.burnin=1000, seed=40, MCMC.samplesize=5000, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr1.1.19.1)
+mcmc.diagnostics(ergmfr1.1.19.1)
+
+# both + nodemix('sex', base = 1)  -> very signi  but sometimes not -> so increase mcmc sample size!!
+#      + nodematch('sex') -> not signi
+# are signi, but not together if put in one model. Keep last one
+# for last model, i again looked stepwise if none of below effects were signi by including and dropping
+
+# friendnet1~edges 
+# + mutual
+# + nodecov('drink')                    -> People that drink more are more/less likely to have friends
+# + nodefactor('sex')                   -> Categorical! Main effect of sex
+# + nodematch('drink')                  -> homophily: people of same drinking like each other more/less
+# + nodematch('sex')                    -> homophily: people of same sex like each other more/less
+# + nodematch('drink',diff=TRUE)        -> here you are treating drink as categorical vari, not best choice
+# + nodemix('drink',base=1)             -> also categorical
+# + edgecov(trustnet1)                  -> Does trust network explain friend ties
+# + gwesp(0.7,fixed=TRUE)               -> transitivity
+# + ostar(2)
+# + m2star
+# + istar(2)                             -> other structural effects
+# + nodeocov('drink')
+# + nodeicov('drink')
+# + absdiff("drink")                     -> people that differ more in drinking behavior more/less likely to form tie
+# + transitive
+# + triadcensus('021C') #030T, 300, 120C(almost signi), '111U' -> not signi = your model can explain the
+#                                                               structures based on your already present variables
+# + idegreepopularity
+
+
+# ############################
+# ######## Wave 2 ############     
+# ############################
+
+ergmfr2.1 <- ergm(friendnet2~edges,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.1)
+
+
+ergmfr2.2 <- ergm(friendnet2~edges
+                  + nodecov('drink'),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.2)
+
+
+ergmfr2.3 <- ergm(friendnet2~edges
+                  + nodefactor('sex'),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.3)
+
+ergmfr2.4 <- ergm(friendnet2~edges
+                  + nodefactor('sex')
+                  + edgecov(trustnet2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.4)
+
+ergmfr2.5 <- ergm(friendnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + edgecov(trustnet2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.5)
+
+ergmfr2.6 <- ergm(friendnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + edgecov(trustnet2)
+                  +ostar(2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.6)
+
+
+ergmfr2.7 <- ergm(friendnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + edgecov(trustnet2)
+                  +m2star,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.7)
+
+ergmfr2.8 <- ergm(friendnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + edgecov(trustnet2)
+                  +m2star
+                  +istar(2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.8)
+
+
+ergmfr2.9 <- ergm(friendnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + edgecov(trustnet2)
+                  +m2star
+                  + mutual,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.9)
+# AIC: 622.7    BIC: 648.6
+
+ergmfr2.10 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   +m2star
+                   + mutual
+                   + nodefactor('sex'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.10)
+
+ergmfr2.11 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   +m2star
+                   + mutual
+                   + nodematch('drink',diff=TRUE),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.11)
+
+ergmfr2.12 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   +m2star
+                   + mutual
+                   + nodematch('sex'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.12)
+
+ergmfr2.13 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   + m2star
+                   + mutual
+                   + nodematch('sex',diff=TRUE),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.13)
+
+ergmfr2.14 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   + m2star
+                   + mutual
+                   + nodemix('sex', base = 1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.14)
+
+
+# friendnet1~edges
+# + mutual                        x
+# + nodecov('drink')              x
+# + nodefactor('sex')             x
+# + nodematch('drink')            x
+# + nodematch('sex')              x
+# + nodematch('drink',diff=TRUE)  x
+# + nodematch('sex',diff=TRUE)    x
+# + nodemix('drink',base=1)
+# + edgecov(trustnet1)            x
+# + gwesp(0.7,fixed=TRUE)         x
+# +ostar(2)+m2star+istar(2)       x
+
+# now increase sampling
+ergmfr2.15 <- ergm(friendnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + edgecov(trustnet2)
+                   + m2star
+                   + ostar(2)
+                   # + nodeocov('drink')
+                   # + nodeicov('drink')
+                   # + absdiff("drink")
+                   # + transitive
+                   + mutual,
+                   control=control.ergm(MCMC.burnin=500, seed=41, MCMC.samplesize=5000,
+                                        parallel=3, parallel.type="PSOCK"))
+summary(ergmfr2.15)
+
+# so only difference with wave one: nodemix('sex', base = 1) is not signi anymore
+
+# this will also take time
+mcmc.diagnostics(ergmfr2.15)
+
+
+
+ergmfr2.15.gof <- gof(ergmfr2.15)
+ergmfr2.15.gof
+plot(ergmfr2.15.gof)
+
+ergmfr1.1.19.1.gof <- gof(ergmfr1.1.19.1)
+ergmfr1.1.19.1.gof
+plot(ergmfr1.1.19.1.gof)
+
+
+
+
+# #########################################################
+# ####################    Trust    ########################    
+# #########################################################
+
+# ############################
+# ######## Wave 1 ############     
+# ############################
+
+
+ergmtr2.1 <- ergm(trustnet2~edges,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.1)
+
+# does not converge
+ergmtr2.2 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE),
+                  control=control.ergm(seed=41, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.2)
+
+# does not converge
+ergmtr2.3 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + ostar(2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.3)
+
+# ostar not signi
+ergmtr2.4 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + ostar(2)
+                  + m2star,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.4)
+
+
+ergmtr2.5 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.5)
+
+ergmtr2.6 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + mutual,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.6)
+
+#Nnot signi
+ergmtr2.7 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + mutual
+                  + nodefactor('sex'),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.7)
+
+
+ergmtr2.8.1 <- ergm(trustnet2~edges
+                    + gwesp(0.7,fixed=TRUE)
+                    + m2star
+                    + istar(2)
+                    + mutual    
+                    + nodematch('sex'),
+                    control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.8.1)
+
+# so adding covariate friendship makes the sex difference not significant, BUT
+# the effect of selecting on sex is probably also occuring in that network...
+ergmtr2.8.2 <- ergm(trustnet2~edges
+                    + gwesp(0.7,fixed=TRUE)
+                    + m2star
+                    + istar(2)
+                    + mutual
+                    + edgecov(friendnet1)    
+                    + nodematch('sex'),
+                    control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.8.2)
+
+# why is girl-girl signi here
+ergmtr2.9 <- ergm(trustnet2~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + mutual
+                  + nodematch('sex',diff=TRUE),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.9)
+
+# but not here??
+ergmtr2.10 <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + mutual
+                   + nodemix('sex',base=1) ,
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.10)
+
+ergmtr2.11 <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + mutual
+                   + nodecov('drink'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.11)
+
+ergmtr2.12 <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + mutual
+                   + nodematch('drink'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.12)
+
+# something weird happened here
+ergmtr2.13 <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + mutual
+                   + nodematch('drink',diff=TRUE),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.13)
+
+# some are signi
+ergmtr2.14 <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + mutual
+                   + nodemix('drink',base=1) ,
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.14)
+
+
+
+# so best one:
+mcmc.diagnostics(ergmtr2.8.1)
+
+# but difference when including network effect; than this one is better:
+ergmtr2.8n <- ergm(trustnet2~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + mutual 
+                   + edgecov(friendnet2)
+                   + nodematch('drink'),
+                   control=control.ergm(seed=40,parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.8n)
+mcmc.diagnostics(ergmtr2.8n)
+
+# more sampling
+ergmtr2.8n2 <- ergm(trustnet2~edges
+                    + gwesp(0.7,fixed=TRUE)
+                    + m2star
+                    + mutual                         # was not signi in w1
+                    # + nodeocov('drink')
+                    # + nodeicov('drink')
+                    # + absdiff("drink")
+                    + transitive
+                    + edgecov(friendnet2)
+                    + nodematch('drink'),     # was not signi in w1, here nodefactor(sex) is not signi
+                    control=control.ergm(MCMC.burnin=500, seed=40, MCMC.samplesize=3000,
+                                         parallel=3, parallel.type="PSOCK"))
+summary(ergmtr2.8n2)
+mcmc.diagnostics(ergmtr2.8n2)
+
+# compared to friendship:
+# here not: ostar
+#           nodematch('sex', diff = T) in wave 1
+
+ergmtr2.8n2.gof <- gof(ergmtr2.8n2)
+ergmtr2.8n.gof
+plot(ergmtr2.8n2.gof)
+
+
+# for the last model (2.8n), I included stepwise these sex and drink below predictors now that I also include the effect 
+# of network friendship.
+# im not sure if by including that network, the sex and drinking effects would change or stay the same
+# only some drink effect presented in 2.8n was significant that was not signi when excluding friend net from final 2.8 model
+# also the sex match was not signi anymore
+# friendnet1~edges 
+# + mutual
+# + nodecov('drink')                    -> People that drink more are more/less likely to have friends
+# + nodefactor('sex')                   -> Main effect of sex
+# + nodematch('drink')                  -> homophily: people of same drinking like each other more/less
+# + nodematch('sex')                    -> homophily: people of same sex like each other more/less
+# + nodematch('drink',diff=TRUE)        -> here you are treating drink as categorical vari, not best choice
+# + nodematch('sex',diff=TRUE) 
+# + nodemix('drink',base=1)             -> also categorical
+# + edgecov(trustnet1)                  -> Does trust network explain friend ties
+# + gwesp(0.7,fixed=TRUE)               -> transitivity
+# +ostar(2)+m2star+istar(2)             -> other structural effects
+
+
+# ############################
+# ######## Wave 2 ############     
+# ############################
+
+
+ergmtr1.1 <- ergm(trustnet1~edges,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.1)
+
+# does not converge
+ergmtr1.2 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE),
+                  control=control.ergm(seed=41, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.2)
+
+# does not converge
+ergmtr1.3 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + ostar(2),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.3)
+
+# all signi
+ergmtr1.4 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + ostar(2)
+                  + m2star,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.4)
+
+# istar not signi, i let ostar out because with it the model does not converge
+ergmtr1.5 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2),
+                  control=control.ergm(seed=41, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.5)
+
+# i let ostar out because with it the model does not converge, mutual not signi
+ergmtr1.6 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + mutual,
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.6)
+
+# signi, putting istar back in makes it also signi here
+ergmtr1.7 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + nodefactor('sex'),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.7)
+
+# signi
+ergmtr1.8 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + nodematch('sex'),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.8)
+
+# why is girl-girl signi here
+ergmtr1.9 <- ergm(trustnet1~edges
+                  + gwesp(0.7,fixed=TRUE)
+                  + m2star
+                  + istar(2)
+                  + nodematch('sex',diff=TRUE),
+                  control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.9)
+
+# but not here??
+ergmtr1.10 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + nodemix('sex',base=1) ,
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.10)
+
+# not signi
+ergmtr1.11 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + nodecov('drink'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.11)
+
+# signi but AIC and BIC is worse so drop
+ergmtr1.12 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + nodematch('drink'),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.12)
+
+# something weird happened here
+ergmtr1.13 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + nodematch('drink',diff=TRUE),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.13)
+
+# none are signi
+ergmtr1.14 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + nodemix('drink',base=1) ,
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.14)
+
+# signi but istar becomes non signi
+ergmtr1.15 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + istar(2)
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.15)
+
+
+ergmtr1.16 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.16)
+
+#checking again
+ergmtr1.17 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + nodecov('drink')
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.17)
+
+# ok now sex isn't signi anymore
+ergmtr1.18 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + nodematch('sex')
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.18)
+
+# hmpf here again signi, but this is main effect of sex
+ergmtr1.19 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + nodefactor('sex')
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.19)
+
+ergmtr1.19.1 <- ergm(trustnet1~edges
+                     + gwesp(0.7,fixed=TRUE)
+                     + m2star
+                     + nodefactor('sex')
+                     + ostar(2)
+                     + edgecov(friendnet1),
+                     control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.19.1)
+
+# not here
+ergmtr1.20 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + nodematch('sex',diff=TRUE)
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.20)
+
+# here also not
+ergmtr1.21 <- ergm(trustnet1~edges
+                   + gwesp(0.7,fixed=TRUE)
+                   + m2star
+                   + nodemix('sex',base=1)
+                   + edgecov(friendnet1),
+                   control=control.ergm(seed=40, parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.21)
+
+# so 19 was our best one
+mcmc.diagnostics(ergmtr1.19.1)
+# i tested mutual again, but still non signi
+ergmtr1.19.1.gof <- gof(ergmtr1.19.1~idegree)
+ergmtr1.19.1.gof
+plot(ergmtr1.19.1.gof)
+
+
+# more sampling
+# difference to w2: not mutual
+#                   also ostar
+#                   not nodematch('drink')
+ergmtr1.19.1n <- ergm(trustnet1~edges
+                      + gwesp(0.7,fixed=TRUE)
+                      + m2star
+                      + ostar(2)
+                      + nodefactor('sex')
+                      # + nodeocov('drink')
+                      # + nodeicov('drink')
+                      # + absdiff("drink")
+                      # + transitive
+                      # + idegreepopularity
+                      # + ttriple
+                      + edgecov(friendnet1),
+                      control=control.ergm(MCMC.burnin=500, seed=40, MCMC.samplesize=5000,
+                                           parallel=3, parallel.type="PSOCK"))
+summary(ergmtr1.19.1n)
+mcmc.diagnostics(ergmtr1.19.1n)
+
+ergmtr1.19.1n.gof <- gof(ergmtr1.19.1n)
+ergmtr1.19.1n.gof
+plot(ergmtr1.19.1n.gof)
+
+
+
+
+
+
+
+
+
+mynets <- simulate(ergm6, 10) 
+mynets
+
+?ergm
+
+### aze stop
+
+### 6. STRUCTURAL AND COVARIATE EFFECTS
+
+ergmfr1.2 <- ergm(friendnet1~edges+mutual, verbose=TRUE)
+summary(ergmfr1.2)
+mcmc.diagnostics(ergmfr1.2)
+
+
+# how about clustering?
+ergmfr1.3 <- ergm(friendnet1~edges+mutual+gwesp(decay=0, fixed=TRUE))
+summary(ergmfr1.3)
+mcmc.diagnostics(ergmfr1.3)
+
+# quite well; in case you see the trace plots going up, down or oscillating,
+# you can continue the estimation starting from where you left off
+ergmfr1.3b <- ergm(friendnet1~edges+mutual+gwesp(0, fixed=T), control=control.ergm(init=ergmfr1.3$coef))
+mcmc.diagnostics(ergmfr1.3b)
+# this is probably better
+# watch out: if your model is stuck in a local trap (degeneracy), continuing the estimation
+# might make things worse and worse by every run...
+
+# look at the results
+summary(ergmfr1.3b)
+# but what does 'gwesp.fixed.0' mean?
+?mcmc.diagnostics
+
+# what are the potential confounding factors causing clustering?
+ergmfr1.4 <- ergm(friendnet1~edges+mutual+gwesp(0, fixed=T)+istar(2)+ostar(2)+m2star)
+mcmc.diagnostics(ergmfr1.4)
+# ostar2 and m2star
+summary(ergmfr1.4)
+
+
+ergmfr1.5 <- ergm(friendnet1~edges+mutual+gwesp(0, fixed=T)+ostar(2)+m2star+
+                    nodematch("sex")+nodeicov("sex")+nodeocov("sex"))
+mcmc.diagnostics(ergmfit1.5)
+summary(ergmfr1.5)
+
+ergm6 <- ergm(friend1~edges+mutual+gwesp(0, fixed=T)+istar(2)+ostar(2)+m2star+
+                nodematch("sex")+nodeicov("sex")+nodeocov("sex")+nodematch("coo"))
+mcmc.diagnostics(ergm6)
+summary(ergm6)
+
+library(RSiena)
+library(igraph)
+
+
+##########################################
+# 2. create internal SIENA objects
+
+# create dependent network variable
+friendship.dependent <- sienaDependent(array(c(friendship_w1, friendship_w2),
+                                             dim=c(nActors, nActors, 2)))
+
+# dependent network variable: friendship
+# behavior varying dependent covariable (node): drinking, 
+# covariate variable 
+#       Constant variable (node)(coCovar): gender
+#       One that changes over time (dyadic;varDyadCovar):  trust
+
+# create constant actor covariates
+sex2 <- c(sex)
+sex.coCovar <- coCovar(sex2, centered=FALSE)
+sex.coCovar
+
+drinkbeh <- sienaDependent(drink,type="behavior")
+drinkbeh <- sienaDependent(array(c(drink1,drink2),dim=c(nActors, nActors, 2)))
+
+# this below is not possible for only two waves
+#trust <- varDyadCovar(array(c(trust_w1, trust_w2),
+#                              dim=c(nActors, nActors, 2)))
+
+#data object
+mySienaData <- sienaDataCreate(friendship.dependent,
+                               sex.coCovar, drinkbeh)
+
+# print report to check
+print01Report(mySienaData,
+              modelname="friendship network")
+
+
+
+##############################################
+# 3. Specify SIENA model
+
+# if you wanna look at all the effects possible for your data:
+effectsDocumentation(mySienaEffects, type="html", display=FALSE, filename="Coev effects")
+
+
+mySienaEffects <- getEffects(mySienaData)
+mySienaEffects
+
+# network effects
+mySienaEffects <- includeEffects(mySienaEffects, transTrip, cycle3, recip)
+mySienaEffects <- includeEffects(mySienaEffects, inPop)
+
+# homophily effects and ego alter control
+mySienaEffects <- includeEffects(mySienaEffects, egoX, altX, sameX, interaction1="sex.coCovar")
+mySienaEffects <- includeEffects(mySienaEffects, egoX, altX, sameX, interaction1="drinkbeh")
+mySienaEffects <- includeEffects(mySienaEffects, totSim, avSim, interaction1="friendship.dependent", name = "drinkbeh")
+
+mySienaEffects # check parameters before estimation
+
+##########################################
+# 4. Create SIENA algorithm
+
+mySienaAlgorithm <- sienaAlgorithmCreate(projname="friendship")
+
+##########################################
+# 5. Estimate
+
+library(parallel)
+detectCores()
+#last three arguments is to speed processing up, depends on how many cores your laptop has (don't use all cores)
+result <- siena07(mySienaAlgorithm, data=mySienaData,
+                  effects=mySienaEffects, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+
+result
+siena.table(result, type="html", file="results.html", tstatPrint=T, sig=T, d=2)
+
+######## SIENA model without the non significant effects
+
+mySienaEffects2 <- includeEffects(mySienaEffects2, inPop,name="friendship.dependent",include=FALSE)
+mySienaEffects2 <- includeEffects(mySienaEffects2, egoX, altX, sameX, interaction1="drinkbeh", include=FALSE)
+mySienaEffects2 <- includeEffects(mySienaEffects2, egoX, altX, sameX, interaction1="sex.coCovar", include=FALSE)
+mySienaEffects2 <- includeEffects(mySienaEffects2, totSim, avSim, interaction1="friendship.dependent", 
+                                  name = "drinkbeh", include=FALSE)
+
+# use prevAns=result to drop convergence even more
+result2 <- siena07(mySienaAlgorithm, data=mySienaData,prevAns=result,
+                   effects=mySienaEffects2, useCluster=TRUE,initC=TRUE,nbrNodes=3, returnDeps=TRUE)
+result2
+summary(result2)
+
+
+
+##### GOF Siena
+
+
+
+GeodesicDistribution <- function (i, data, sims, period, groupName,
+                                  varName, levls=c(1:5,Inf), cumulative=TRUE, ...) {
+  x <- networkExtraction(i, data, sims, period, groupName, varName)
+  unloadNamespace("igraph")# to avoid package clashes
+  require(sna)
+  a <- sna::geodist(x)$gdist
+  if (cumulative)
+  {
+    gdi <- sapply(levls, function(i){ sum(a<=i) })
+  }
+  else
+  {
+    gdi <- sapply(levls, function(i){ sum(a==i) })
+  }
+  names(gdi) <- as.character(levls)
+  gdi
+}
+
+# triads
+TriadCensus <- function(i, data, sims, wave, groupName, varName, levls=1:16){
+  unloadNamespace("igraph") # to avoid package clashes
+  require(sna)
+  require(network)
+  x <- networkExtraction(i, data, sims, wave, groupName, varName)
+  tc <- sna::triad.census(x)[1,levls]
+  # triad names are transferred automatically
+  tc
+}
+
+
+table(degree(graph.adjacency(friendship_w1),mode="in"))
+gofi <- sienaGOF(result2, IndegreeDistribution,levls=1:13,verbose=T,varName="friendship.dependent")
+gofResult.outdegree <- sienaGOF(result2, OutdegreeDistribution, varName = "friendship.dependent", verbose = FALSE)
+gofResult.geodesic <- sienaGOF(result2, GeodesicDistribution, varName = "friendship.dependent", verbose = FALSE)
+gofResult.triadcensus <- sienaGOF(result2, TriadCensus, varName = "friendship.dependent", verbose = TRUE)
+
+
+plot(gofResult.outdegree)
+plot(gofi)
+plot(gofResult.geodesic)
+plot(gofResult.triadcensus, center = TRUE, scale = TRUE)
+
+# view one of the simulated networks
+library(igraph)
+adjList1 <- result2$sims[[1]]$Data1$friendship.dependent$`1`
+adjList <- list(list())
+
+#transform to igraph adjacency list
+for(i in 1:29){
+  adjList[[i]] <- adjList1[adjList1[,1] == i, 2]
+}
+
+simGraph <- graph.adjlist(adjList)
+
+plot(simGraph)
+
+
+
+
+
+# Plot real network and one simulated network (the first one)
+
+graph1 <- graph.adjacency(friendship_w2)
+graph2 <- simGraph
+
+myLayoutSIENA <- layout.fruchterman.reingold(graph.fr12)
+
+par(mfrow = c(1, 2))
+plot(graph1,
+     vertex.color = "darkblue",
+     #     vertex.shape = ifelse(gender == 1, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 10,
+     vertex.label = "",
+     layout = myLayoutSIENA,
+     main = "Network wave 2")
+plot(graph2,
+     vertex.color = "darkblue",
+     #     vertex.shape = ifelse(gender == 1, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 10,
+     vertex.label = "",
+     layout = myLayoutSIENA,
+     main = "Simulated network")
+par(mfrow = c(1, 1))
+
+
+## multiplex
+
+####################################################
+# Step 1.5: check some descriptives
+####################################################
+
+# Let's check how the networks look like!
+g1 <- graph.adjacency(friendship_w1)
+g2 <- graph.adjacency(friendship_w2)
+g3 <- graph.adjacency(trust_w1)
+g4 <- graph.adjacency(trust_w2)
+g1234 <- graph.adjacency(friendship_w1 + friendship_w2 + trust_w1 + trust_w2)
+
+myLayout <- layout.auto(g1234)
+
+par(mfrow = c(2, 2))
+plot(g1,
+     vertex.color = ifelse(sex == 2, "red", "darkblue"),
+     vertex.shape = ifelse(sex == 2, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Friendship network wave 1")
+plot(g2,
+     vertex.color = ifelse(sex == 2, "red", "darkblue"),
+     vertex.shape = ifelse(sex == 2, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Friendship network wave 2")
+plot(g3,
+     vertex.color = ifelse(sex == 2, "red", "darkblue"),
+     vertex.shape = ifelse(sex == 2, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Trust network wave 1")
+plot(g4,
+     vertex.color = ifelse(sex == 2, "red", "darkblue"),
+     vertex.shape = ifelse(sex == 2, "square", "circle"),
+     edge.color = "black",
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Trust network wave 2")
+par(mfrow = c(1, 1))
+
+# now a combined view
+friendtrust_w1 <- friendship_w1 + 2*trust_w1
+friendtrust_w2 <- friendship_w2 + 2*trust_w2
+# now we have a network for each wave in which a friendship tie without a trust
+# ties has a value of 1, a trust tie only has a value of 2, and friend&trust ties have
+# a value of 3.
+ft1 <- graph.adjacency(friendtrust_w1, weighted=TRUE)
+ft2 <- graph.adjacency(friendtrust_w2, weighted=TRUE)
+
+par(mfrow = c(1, 2))
+plot(ft1,
+     vertex.color = ifelse(sex == 2, "red", "darkblue"),
+     vertex.shape = ifelse(sex == 2, "square", "circle"),
+     edge.color = ifelse(E(ft1)$weight == 1, "black", ifelse(E(ft1)$weight == 2, "grey", "green")),
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Friendship and trust networks wave 1")
+plot(ft2,
+     vertex.color = ifelse(sex == 2, "red", "royalblue"),
+     vertex.shape = ifelse(sex == 2, "circle", "square"),
+     edge.color = ifelse(E(ft2)$weight == 1, "black", ifelse(E(ft2)$weight == 2, "grey", "green")),
+     edge.width = 2,
+     edge.arrow.size = 0.1,
+     vertex.size = 5,
+     vertex.label = "",
+     layout = myLayout,
+     main = "Friendship and trust networks wave 2")
+par(mfrow = c(1, 1))
+
+
+# assessing overlap and stability - with numbers
+
+# Define this function
+# (by Tom Snijders, it is from one of the example scripts on the Siena website:
+# http://www.stats.ox.ac.uk/~snijders/siena/RscriptSienaMultiple.R)
+Jaccard <- function(var1,var2){
+  # a and b should be 0-1 arrays
+  tab <- table(var1,var2)
+  print(tab)
+  pa <- tab["1","1"] + tab["1","0"]
+  pb <- tab["1","1"] + tab["0","1"]
+  pab_ind <- pa*pb/sum(tab)
+  J_ind <- pab_ind / (pa + pb - pab_ind)
+  cat("Expected Jaccard under independence with these marginals =",
+      J_ind, "\n")
+  cat("Observed Jaccard = ")
+  tab["1","1"]/(tab["1","1"] + tab["0","1"] + tab["1","0"])
+}
+
+# and make different comparisons
+Jaccard(friendship_w1, friendship_w2)  #same
+Jaccard(trust_w1, trust_w2)             #same
+Jaccard(friendship_w1, trust_w1)        #same
+
+Jaccard(friendship_w1, trust_w2)    #this is new
+Jaccard(trust_w1, friendship_w2)    #this is new
+
+####################################################
+# Step 2: create SIENA objects    
+####################################################
+
+# the first dependent network - friendship
+friendship.dependent1 <- sienaDependent(array(c(friendship_w1, friendship_w2),dim=c(nActors, nActors, 2)))
+# the second dependent network - trust
+trust.dependent2 <- sienaDependent(array(c(trust_w1, trust_w2),  dim=c(nActors, nActors, 2)))
+# constant covariate - gender
+gender.coCovar <- coCovar(sex[,1])
+
+#specified above too
+drinkbeh <- sienaDependent(drink,type="behavior")
+
+# create siena data object
+sienaData <- sienaDataCreate(friendship.dependent1,trust.dependent2,gender.coCovar, drinkbeh)
+
+# print initial report to file
+print01Report(sienaData, modelname="RECENS_multiplex_report")
+
+
+####################################################
+# Step 3: specify SIENA model
+####################################################
+
+sienaEffects <- getEffects(sienaData)
+sienaEffects
+
+# let's look at the available effects
+effectsDocumentation(sienaEffects)
+
+# first it makes sense to include effects for the two networks separately
+sienaEffects <- includeEffects(sienaEffects, name="friendship.dependent1",transTrip, inPop, outPop, cycle3, recip)
+sienaEffects <- includeEffects(sienaEffects, name="trust.dependent2",transTrip, inPop, outPop, cycle3, recip)
+sienaEffects <- includeEffects(sienaEffects, name="friendship.dependent1",egoX, altX, sameX, interaction1="gender.coCovar")
+sienaEffects <- includeEffects(sienaEffects, name="trust.dependent2",egoX, altX, sameX, interaction1="gender.coCovar")
+
+# then add the basic dyadic cross-production effect
+sienaEffects <- includeEffects(sienaEffects, name="friendship.dependent1",crprod,interaction1="trust.dependent2")
+sienaEffects <- includeEffects(sienaEffects, name="trust.dependent2",crprod,interaction1="friendship.dependent1")
+
+# and control for degree correlations between the two networks
+# (note: these are square root effects by default- they usually fit better and are more stable)
+sienaEffects <- includeEffects(sienaEffects, name="friendship.dependent1", outActIntn, interaction1="trust.dependent2")
+sienaEffects <- includeEffects(sienaEffects, name="trust.dependent2",outActIntn,interaction1="friendship.dependent1")
+
+sienaEffects <- includeEffects(sienaEffects, name="friendship.dependent1", egoX, altX, sameX, totSim, avSim, interaction1="drinkbeh")
+
+
+# look at the specification
+sienaEffects
+
+####################################################
+#####  Step 4: create estimation algorithm     #####
+####################################################
+sienaAlgorithm <- sienaAlgorithmCreate(projname="RECENS_multiplex_algo")
+
+####################################################
+######      Step 5: estimate SIENA model       #####
+####################################################
+
+# estimate model
+result <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects, returnDeps = T)
+result
+
+# rerun estimation if model has not converged
+# result <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects, prevAns=result)
+# result
+
+# The results:
+siena.table(result, type = "html", file = "multiplex_results.html", tstatPrint=T, sig=T, d=2)
+
+# exclude
+
+sienaEffects2 <- includeEffects(sienaEffects, name="trust.dependent2",inPop, cycle3, include=FALSE)
+sienaEffects2 <- includeEffects(sienaEffects2, name="friendship.dependent1", cycle3, include=FALSE)
+sienaEffects2 <- includeEffects(sienaEffects2, name="friendship.dependent1",egoX, altX, sameX, interaction1="gender.coCovar", include=FALSE)
+sienaEffects2 <- includeEffects(sienaEffects2, name="trust.dependent2",egoX, altX, sameX, interaction1="gender.coCovar", include=FALSE)
+
+sienaEffects2 <- includeEffects(sienaEffects2, name="friendship.dependent1",crprod,interaction1="trust.dependent2")
+sienaEffects2 <- includeEffects(sienaEffects2, name="trust.dependent2",crprod,interaction1="friendship.dependent1")
+
+sienaEffects2 <- includeEffects(sienaEffects2, name="friendship.dependent1", outActIntn, interaction1="trust.dependent2",include=FALSE)
+sienaEffects2 <- includeEffects(sienaEffects2, name="trust.dependent2",outActIntn,interaction1="friendship.dependent1",include=FALSE)
+
+sienaEffects2 <- includeEffects(sienaEffects2, name="friendship.dependent1", egoX, altX, sameX, interaction1="drinkbeh", include=FALSE)
+sienaEffects2 <- includeEffects(sienaEffects2, name="trust.dependent2", egoX, altX, sameX, interaction1="drinkbeh", include=FALSE)
+sienaEffects2
+
+result4 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects2, returnDeps = T)
+
+siena.table(result4, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+
+#??? 5
+sienaEffects3 <- includeEffects(sienaEffects2, name="trust.dependent2", outAct, )
+sienaEffects3 <- includeEffects(sienaEffects3, name="friendship.dependent1", outAct)
+result5 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects3, prevAns=result4,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+result5
+siena.table(result5, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+#??? 6
+sienaEffects4 <- includeEffects(sienaEffects3, name="trust.dependent2", outAct, include=FALSE)
+sienaEffects4 <- includeEffects(sienaEffects4, name="friendship.dependent1", outAct, include=FALSE)
+sienaEffects4 <- includeEffects(sienaEffects4, name="trust.dependent2", outOutAss, outInAss, inOutAss)
+sienaEffects4 <- includeEffects(sienaEffects4, name="friendship.dependent1", outOutAss, outInAss, inOutAss)
+result6 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects4, prevAns=result4,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+result6
+siena.table(result6, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+#??? 7
+sienaEffects5 <- includeEffects(sienaEffects4, name="trust.dependent2", outOutAss, outInAss, inOutAss, include=FALSE)
+sienaEffects5 <- includeEffects(sienaEffects5, name="friendship.dependent1", outOutAss, outInAss, inOutAss, include=FALSE)
+sienaEffects5 <- includeEffects(sienaEffects5, name="trust.dependent2", inInAss)
+sienaEffects5 <- includeEffects(sienaEffects5, name="friendship.dependent1", inInAss)
+sienaEffects5 <- includeEffects(sienaEffects5, name="trust.dependent2",crprodRecip,interaction1="friendship.dependent1")
+sienaEffects5 <- includeEffects(sienaEffects5, name="friendship.dependent1",crprodRecip,interaction1="trust.dependent2")
+sienaEffects5
+result7 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects5, prevAns=result5,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+siena.table(result7, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+#??? 8
+sienaEffects6 <- includeEffects(sienaEffects5, name="trust.dependent2", inInAss, include=FALSE)
+sienaEffects6 <- includeEffects(sienaEffects6, name="friendship.dependent1", inInAss, include=FALSE)
+sienaEffects6 <- includeEffects(sienaEffects6, name="trust.dependent2",crprodRecip,interaction1="friendship.dependent1", include=FALSE)
+sienaEffects6 <- includeEffects(sienaEffects6, name="friendship.dependent1",crprodRecip,interaction1="trust.dependent2", include=FALSE)
+sienaEffects6 <- includeEffects(sienaEffects6, name="trust.dependent2",crprodMutual, outPopIntn, inPopIntn,interaction1="friendship.dependent1")
+sienaEffects6 <- includeEffects(sienaEffects6, name="friendship.dependent1",crprodMutual, outPopIntn, inPopIntn, interaction1="trust.dependent2")
+
+result7 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects6, prevAns=result6,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+result6
+siena.table(result7, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+#??? 9
+sienaEffects7 <- includeEffects(sienaEffects6, name="trust.dependent2",crprodMutual,outPopIntn, inPopIntn,interaction1="friendship.dependent1", include=FALSE)
+sienaEffects7 <- includeEffects(sienaEffects7, name="friendship.dependent1",crprodMutual,outPopIntn, inPopIntn,interaction1="trust.dependent2", include=FALSE)
+sienaEffects7 <- includeEffects(sienaEffects7, name="trust.dependent2",from, interaction1="friendship.dependent1")
+sienaEffects7 <- includeEffects(sienaEffects7, name="friendship.dependent1",from, interaction1="trust.dependent2")
+sienaEffects7 <- includeEffects(sienaEffects7, name="drinkbeh", indeg, outdeg, interaction1="trust.dependent2")
+sienaEffects7 <- includeEffects(sienaEffects7, name="drinkbeh", indeg, outdeg, interaction1="friendship.dependent1")
+sienaEffects7
+result8 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects7, prevAns=result7,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+siena.table(result8, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+
+#??? 10
+sienaEffects8 <- includeEffects(sienaEffects7, name="trust.dependent2",from, interaction1="friendship.dependent1", include=FALSE)
+sienaEffects8 <- includeEffects(sienaEffects8, name="friendship.dependent1",from, interaction1="trust.dependent2", include=FALSE)
+sienaEffects8 <- includeEffects(sienaEffects8, name="drinkbeh", indeg, outdeg, interaction1="trust.dependent2", include=FALSE)
+sienaEffects8 <- includeEffects(sienaEffects8, name="drinkbeh", indeg, outdeg, interaction1="friendship.dependent1", include=FALSE)
+sienaEffects8 <- includeEffects(sienaEffects8, name="drinkbeh", avSim, totSim, interaction1="trust.dependent2")
+sienaEffects8 <- includeEffects(sienaEffects8, name="drinkbeh", avSim, totSim, interaction1="friendship.dependent1")
+
+result9 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects8,
+                   returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+siena.table(result9, type = "html", file = "multiplex_results9.html", tstatPrint=T, sig=T, d=2)
+
+RI <- sienaRI(sienaData, result9)
+
+
+
+
+#??? 11    -list of every effect
+sienaEffects9 <- getEffects(sienaData)
+sienaEffects9 <- includeEffects(sienaEffects9, name="friendship.dependent1",transTrip, inPop, outPop, cycle3, recip,inInAss,outOutAss,outInAss, inOutAss,outAct)
+sienaEffects9 <- includeEffects(sienaEffects9, name="trust.dependent2",transTrip, inPop, outPop, cycle3, recip,inInAss, outOutAss, outInAss, inOutAss, outAct)
+sienaEffects9 <- includeEffects(sienaEffects9, name="trust.dependent2", egoX, altX, sameX, totSim, avSim, interaction1="drinkbeh")
+sienaEffects9 <- includeEffects(sienaEffects9, name="friendship.dependent1", egoX, altX, sameX, totSim, avSim, interaction1="drinkbeh")
+sienaEffects9 <- includeEffects(sienaEffects9, name="friendship.dependent1",egoX, altX, sameX, interaction1="gender.coCovar")
+sienaEffects9 <- includeEffects(sienaEffects9, name="trust.dependent2",egoX, altX, sameX, interaction1="gender.coCovar")
+# then add the dyadic cross-production effect
+sienaEffects9 <- includeEffects(sienaEffects9, name="friendship.dependent1",from,crprod,crprodMutual, outPopIntn, inPopIntn,crprodRecip,outActIntn,interaction1="trust.dependent2")
+sienaEffects9 <- includeEffects(sienaEffects9, name="trust.dependent2",from,crprod,crprodMutual, outPopIntn, inPopIntn, crprodRecip,outActIntn,interaction1="friendship.dependent1")
+sienaEffects9 <- includeEffects(sienaEffects9, name="drinkbeh", indeg, outdeg,avSim, totSim, interaction1="trust.dependent2")
+sienaEffects9 <- includeEffects(sienaEffects9, name="drinkbeh", indeg, outdeg, avSim, totSim, interaction1="friendship.dependent1")
+
+
+result10 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects9,
+                    returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3)
+siena.table(result10, type = "html", file = "multiplex_resultsMAX.html", tstatPrint=T, sig=T, d=2)
+
+
+
+#??? 12
+sienaEffects11 <- includeEffects(sienaEffects7, name="trust.dependent2",from, interaction1="friendship.dependent1", include=FALSE)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1",from, interaction1="trust.dependent2", include=FALSE)
+sienaEffects11 <- includeEffects(sienaEffects11, name="trust.dependent2", totSim, avSim, interaction1="drinkbeh", include=F)
+sienaEffects11 <- includeEffects(sienaEffects11, avSim, name="drinkbeh",interaction1="friendship.dependent1", include = F) #manual
+sienaEffects11 <- includeEffects(sienaEffects11, avAlt, name="drinkbeh",interaction1="friendship.dependent1", include = F) #manual
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", type='rate', outRateLog, include = F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", type='rate', outRateLog, include = F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", type='rate', Rate, include = F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", type='rate', outRate, inRate, include = F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="trust.dependent2", type='rate', outRateLog, include =F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", recip, type='creation', include = F)
+sienaEffects11 <- includeEffects(sienaEffects11, name="friendship.dependent1", recip)
+sienaEffects11 <- includeEffects(sienaEffects11, name="drinkbeh", avSim,interaction1="trust.dependent2")
+
+sienaEffects11
+result11 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects11,
+                    returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=)
+siena.table(result11, type = "html", file = "multiplex_results11.html", tstatPrint=T, sig=T, d=2)
+
+RI <- sienaRI(sienaData, result11)
+
+
+# 13 selection
+sienaEffects12 <- includeEffects(sienaEffects11, name="trust.dependent2",egoX, altX, sameX, interaction1="gender.coCovar")
+sienaEffects12 <- includeEffects(sienaEffects11, name="friendship.dependent1",egoX, altX, sameX, interaction1="gender.coCovar")
+
+sienaEffects12
+result12 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects12,
+                    returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=result11)
+siena.table(result12, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+#???14 influence
+sienaEffects13 <- includeEffects(sienaEffects11, name="friendship.dependent1", egoX, altX, interaction1="drinkbeh")
+sienaEffects13
+result13 <- siena07(sienaAlgorithm, data = sienaData, effects = sienaEffects13,
+                    returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=result11)
+siena.table(result13, type = "html", file = "multiplex_results4.html", tstatPrint=T, sig=T, d=2)
+
+
+
+
+
+#########################
+
+
+outTable(result4)
+sienaRI()
+#########################
+
+
+(gof.beh <- sienaGOF(result9, BehaviorDistribution, verbose = T, join = T, varName = "drinkbeh"))
+plot(gof.beh)
+
+### GOF
+gofi2 <- sienaGOF(result9, IndegreeDistribution,levls=1:13,verbose=T,varName="friendship.dependent1")
+gofResult.outdegree2 <- sienaGOF(result9, OutdegreeDistribution, varName = "friendship.dependent1", verbose = FALSE)
+gofResult.geodesic2 <- sienaGOF(result9, GeodesicDistribution, varName = "friendship.dependent1", verbose = FALSE)
+gofResult.triadcensus2 <- sienaGOF(result9, TriadCensus, varName = "friendship.dependent1", verbose = TRUE)
+
+plot(gofi2)
+plot(gofResult.outdegree2)
+plot(gofResult.geodesic2)
+plot(gofResult.triadcensus2, center = TRUE, scale = TRUE)
+
+gofi22 <- sienaGOF(result9, IndegreeDistribution,levls=1:13,verbose=T,varName="trust.dependent2")
+gofResul2t.outdegree2 <- sienaGOF(result9, OutdegreeDistribution, varName = "trust.dependent2", verbose = FALSE)
+gofResult2.geodesic2 <- sienaGOF(result9, GeodesicDistribution, varName = "trust.dependent2", verbose = FALSE)
+gofResult2.triadcensus2 <- sienaGOF(result9, TriadCensus, varName = "trust.dependent2", verbose = TRUE)
+
+plot(gofi22)
+plot(gofResul2t.outdegree2)
+plot(gofResult2.geodesic2)
+plot(gofResult2.triadcensus2, center = TRUE, scale = TRUE)
+citation(package="ergm")
+
+#############################################
+############################################# Selection & influence
+
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? 
+# ??????????????????????????????????????????????????????  Friendship   ?????????????????????????????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+
+# create dependent network variable
+friendship.dep <- sienaDependent(array(c(friendship_w1, friendship_w2),
+                                       dim=c(nActors, nActors, 2)))
+# create constant actor covariates
+sex2 <- c(sex)
+sex.coCovar <- coCovar(sex2, centered = F)
+sex.coCovar
+drinkb <- sienaDependent(drink,type="behavior")
+#drinkb <- sienaDependent(array(c(drink1,drink2),dim=c(nActors, nActors, 2)))
+mySienaData1 <- sienaDataCreate(friendship.dep,sex.coCovar, drinkb)
+myEffects <- getEffects(mySienaData1)
+mySienaAl <- sienaAlgorithmCreate(projname="friendship")
+
+##########################################################
+####################  Selection ##########################    v (drink and gender)
+##########################################################
+
+# drinking
+
+# model
+myEffects <- includeEffects(myEffects, egoX, altX, sameX, interaction1="sex.coCovar", name="friendship.dep", include =F)
+myEffects <- includeEffects(myEffects, transTrip, recip, inPop, outPop, name="friendship.dep")
+myEffects <- includeEffects(myEffects, egoX, altX, simX, interaction1="drinkb") #prof
+myEffects
+res1 <- siena07(mySienaAl, data = mySienaData1, effects = myEffects,
+                returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=myEffects)
+siena.table(res1, type = "html", file = "multiplex_frienddrinkselection.html", tstatPrint=T, sig=T, d=2)
+
+source("http://www.stats.ox.ac.uk/~snijders/siena/SelectionTables.r")
+selection.drink <- selectionMatrix(res1, mySienaData1, "friendship.dep", "drinkb", 1:4)
+selection.drink
+library(ggplot2)
+vname <- "drinkb"
+name <- "friendship.dep"
+levls <- 1:4
+vselect <- selectionTable(res1, mySienaData1, name, vname, levls)
+valter <- as.matrix(vselect[3])
+select <- as.matrix(vselect[4])
+ggplot(vselect , aes(valter , select , group=ego , colour=ego)) + geom_point () +
+  geom_smooth(size =1.2, span =1) + scale_colour_hue() + scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank ())+ labs(x=paste("drinking behaviour"),y=paste("selection function"),
+                                           title=paste("Effect of drinking on friendship"),colour=paste(vname)) +
+  theme(plot.title=element_text(hjust =0.5))
+
+# gender
+
+# model
+myEffects1 <- includeEffects(myEffects, egoX, altX, sameX, interaction1="drinkb", name="friendship.dep", include =F)
+myEffects1 <- includeEffects(myEffects1, transTrip, recip, inPop, outPop, name="friendship.dep")
+myEffects1 <- includeEffects(myEffects1, egoX, altX, simX, interaction1="sex.coCovar") #prof
+myEffects1
+res11 <- siena07(mySienaAl, data = mySienaData1, effects = myEffects1,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=myEffects)
+siena.table(res11, type = "html", file = "multiplex_friendGenderselection.html", tstatPrint=T, sig=T, d=2)
+
+
+selection.sex <- selectionMatrix(res11, mySienaData1, "friendship.dep", "sex.coCovar", 1:2)
+selection.sex
+library(ggplot2)
+vname <- "sex.coCovar"
+name <- "friendship.dep"
+levls <- 1:2
+vselect <- selectionTable(res11, mySienaData1, name, vname, levls)
+vselect
+valter <- as.matrix(vselect[3])
+select <- as.matrix(vselect[4])
+ggplot(vselect , aes(valter , select , group=ego , colour=ego)) + geom_point () +
+  geom_smooth(size =1.2, span =1) + scale_colour_hue() + scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank ())+ labs(x=paste(vname),y=paste("selection function"),
+                                           title=paste("Selection effect of drinking"),colour=paste(vname)) +
+  theme(plot.title=element_text(hjust =0.5))
+
+
+##########################################################
+####################  influence ##########################    v (only drink)
+##########################################################
+
+# drinking
+
+# model
+myEffects2 <- includeEffects(myEffects, transTrip, recip, inPop, outPop, name="friendship.dep")
+myEffects2 <- includeEffects(myEffects2, name = "drinkb", avAlt, indeg, outdeg, interaction1 = "friendship.dep") #prof
+#myEffects2 <- includeEffects(myEffects2, name = "drinkb", indeg, outdeg, interaction1 = "friendship.dep", include =F)
+myEffects2 <- includeEffects(myEffects2, egoX, altX, simX, interaction1="drinkb", include =F)
+myEffects2
+res22 <- siena07(mySienaAl, data = mySienaData1, effects = myEffects2,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=res1)
+siena.table(res22, type = "html", file = "multiplex_FriendDrinkInfluence.html", tstatPrint=T, sig=T, d=2)
+
+
+source("http://www.stats.ox.ac.uk/~snijders/siena/InfluenceTables.r")
+im.drink2 <- influenceMatrix(res22, mySienaData1, "friendship.dep", "drinkb", 1:4)
+# It can be displayed
+im.drink2
+tbl.drink2 <- xtable(im.drink2)
+print(tbl.drink2,file="tbl_drink2.htm", type="html",
+      html.table.attributes = "rules = none")
+xtable(tbl.drink2) # for latex
+
+library(ggplot2)
+name <- "drinkb"
+zname <- "friendship.dep"
+levls <- 1:4
+#png(filename=paste("influenceTable_",name,".png",sep=""), width=1000,height=800)
+zselect <- influenceTable(res22, mySienaData1, zname, name, levls)
+zselect
+sp <- ggplot(zselect, aes(zego, select, group=alter, colour=alter))
+sp + geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(name),
+       y=paste('evaluation function'),
+       title=paste('Influence effect of',"drinking",''),
+       colour=paste("drinking",'\nalter')) +
+  theme_grey(base_size=15, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
+
+# or this figure
+# zselect <- selectionTable(res2, mySienaData1, name, zname, levls)
+# valter <- as.matrix(zselect[3])
+# select <- as.matrix(zselect[4])
+# ggplot(zselect , aes(valter , select , group=alter , colour=alter)) + geom_point () +
+#   geom_smooth(size =1.2, span =1) + scale_colour_hue() + scale_x_continuous(breaks=levls) +
+#   theme(legend.key=element_blank ())+ labs(x=paste(vname),y=paste("selection function"),
+#                                            title=paste("Effect of drinking"),colour=paste(vname)) +
+#   theme(plot.title=element_text(hjust =0.5))
+
+
+# gender   -> not possible?
+
+myEffects3 <- includeEffects(myEffects2, transTrip, recip, inPop, outPop, name="friendship.dep")
+myEffects3 <- includeEffects(myEffects3, interaction1 = "sex.coCovar", avAlt, indeg, outdeg) #prof
+myEffects3 <- includeEffects(myEffects3, name = "drinkb", avAlt, indeg, outdeg, interaction1 = "friendship.dep", include =F)
+myEffects3
+res2 <- siena07(mySienaAl, data = mySienaData1, effects = myEffects2,
+                returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=res1)
+siena.table(res2, type = "html", file = "multiplex_FriendDrinkInfluence.html", tstatPrint=T, sig=T, d=2)
+
+
+im.drink <- influenceMatrix(res2, mySienaData1, "friendship.dep", "sex.coCovar", 1:4)
+# It can be displayed
+im.drink
+tbl.drink <- xtable(im.drink)
+print(tbl.drink,file="tbl_drink.htm", type="html",
+      html.table.attributes = "rules = none")
+
+library(ggplot2)
+name <- "drinkb"
+zname <- "friendship.dep"
+levls <- 1:4
+#png(filename=paste("influenceTable_",name,".png",sep=""), width=1000,height=800)
+zselect <- influenceTable(res2, mySienaData1, zname, name, levls)
+sp <- ggplot(zselect, aes(zego, select, group=alter, colour=alter))
+sp + geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(name),
+       y=paste('evaluation function'),
+       title=paste('Influence effect',zname,'on',name),
+       colour=paste(name,'\nalter')) +
+  theme_grey(base_size=26, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
+
+# or this figure
+# zselect <- selectionTable(res2, mySienaData1, name, zname, levls)
+# valter <- as.matrix(zselect[3])
+# select <- as.matrix(zselect[4])
+# ggplot(zselect , aes(valter , select , group=alter , colour=alter)) + geom_point () +
+#   geom_smooth(size =1.2, span =1) + scale_colour_hue() + scale_x_continuous(breaks=levls) +
+#   theme(legend.key=element_blank ())+ labs(x=paste(vname),y=paste("selection function"),
+#                                            title=paste("Effect of drinking"),colour=paste(vname)) +
+#   theme(plot.title=element_text(hjust =0.5))
+
+
+
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? 
+# ??????????????????????????????????????????????????????????????????  Trust   ????????????????????????????????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+# ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
+
+# create dependent network variable
+trust.dep <- sienaDependent(array(c(trust_w1, trust_w2),
+                                  dim=c(nActors, nActors, 2)))
+# create constant actor covariates
+sex2 <- c(sex)
+sex.coCovar <- coCovar(sex2, centered=FALSE)
+sex.coCovar
+drinkb <- sienaDependent(drink,type="behavior")
+#drinkb <- sienaDependent(array(c(drink1,drink2),dim=c(nActors, nActors, 2)))
+mySienaData2 <- sienaDataCreate(trust.dep,sex.coCovar, drinkb)
+mytEffects <- getEffects(mySienaData2)
+mySienaAlT <- sienaAlgorithmCreate(projname="trust")
+
+
+##########################################################
+####################  Selection ##########################    
+##########################################################
+
+
+# ************ drinking **************   
+# ************************************
+
+# model
+mytEffects <- includeEffects(mytEffects, transTrip, recip, outPop, name="trust.dep")
+mytEffects <- includeEffects(mytEffects, egoX, altX, simX, interaction1="drinkb") #prof
+mytEffects
+rest2 <- siena07(mySienaAlT, data = mySienaData2, effects = mytEffects,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=)
+siena.table(rest2, type = "html", file = "multiplex_res2.html", tstatPrint=T, sig=T, d=2)
+
+
+im.drinktrustsel <- selectionMatrix(rest2, mySienaData2, "trust.dep", "drinkb", 1:4)
+# It can be displayed
+im.drinktrustsel
+
+library(ggplot2)
+vname <- "drinkb"
+name <- "trust.dep"
+levls <- 1:4
+vselect <- selectionTable(rest2, mySienaData2, name, vname, levls)
+valter <- as.matrix(vselect[3])
+select <- as.matrix(vselect[4])
+ggplot(vselect, aes(valter, select, group=ego, colour=ego))+geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(vname),
+       y=paste("selection function"),
+       title=paste("Effect","drinking","on","trust"),
+       colour=paste("drinkb")) +
+  theme_grey(base_size=26, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+
+# ************ gender **************    
+# **********************************
+
+
+trust.dep <- sienaDependent(array(c(trust_w1, trust_w2),
+                                  dim=c(nActors, nActors, 2)))
+# create constant actor covariates
+sex2 <- c(sex)
+sex.coCovar <- coCovar(sex2, centered=FALSE)
+sex.coCovar
+drinkb <- sienaDependent(drink,type="behavior")
+mySienaData2 <- sienaDataCreate(trust.dep,sex.coCovar, drinkb)
+mytEffects <- getEffects(mySienaData2)
+mySienaAlT <- sienaAlgorithmCreate(projname="trust")
+
+# model
+mytEffects3 <- includeEffects(mytEffects, egoX, altX, simX, interaction1="drinkb", include = F)
+mytEffects3 <- includeEffects(mytEffects, transTrip, recip, outPop, name="trust.dep")
+mytEffects3 <- includeEffects(mytEffects3, egoX, altX, simX, interaction1="sex.coCovar")
+mytEffects3
+rest3 <- siena07(mySienaAlT, data = mySienaData2, effects = mytEffects3,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=rest2)
+siena.table(rest3, type = "html", file = "multiplex_selectionTrustSex.html", tstatPrint=T, sig=T, d=2)
+
+im.sex <- selectionMatrix(rest3, mySienaData2, "trust.dep", "sex.coCovar", 1:2)
+# It can be displayed
+im.sex
+
+library(ggplot2)
+vname <- "sex.coCovar"
+name <- "trust.dep"
+levls <- 1:2
+vselect <- selectionTable(rest3, mySienaData2, name, vname, levls)
+valter <- as.matrix(vselect[1])
+select <- as.matrix(vselect[2])
+ggplot(vselect, aes(valter, select, group=ego, colour=ego))+geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(vname),
+       y=paste("selection function"),
+       title=paste("Effect",vname,"on",name),
+       colour=paste(vname)) +
+  theme_grey(base_size=26, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+
+
+##########################################################
+####################  influence ##########################   
+##########################################################
+
+
+# ************ drinking **************  
+# ************************************
+
+# convergence problems
+mytEffects2 <- includeEffects(mytEffects, egoX, altX, sameX, interaction1="sex.coCovar", name="trust.dep", include =F)
+mytEffects2 <- includeEffects(mytEffects2, name = "drinkb", avAlt, indeg, outdeg, interaction1 = "trust.dep") #prof
+mytEffects2 <- includeEffects(mytEffects2, egoX, altX, simX, interaction1="drinkb", include =F)
+mytEffects2
+rest4 <- siena07(mySienaAlT, data = mySienaData2, effects = mytEffects2,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=rest2)
+siena.table(rest4, type = "html", file = "multiplex_TrustDrinkInfluence.html", tstatPrint=T, sig=T, d=2)
+
+
+im.drink <- influenceMatrix(rest4, mySienaData2, "trust.dep", "drinkb", 1:4)
+# It can be displayed
+im.drink
+tbl.drink <- xtable(im.drink)
+print(tbl.drink,file="tbl_drink.htm", type="html",
+      html.table.attributes = "rules = none")
+
+library(ggplot2)
+vname <- "drinkb"
+zname <- "trust.dep"
+levls <- 1:4
+#png(filename=paste("influenceTable_",name,".png",sep=""), width=1000,height=800)
+zselect <- influenceTable(rest3, mySienaData2, zname, name, levls)
+sp <- ggplot(zselect, aes(zego, select, group=alter, colour=alter))
+sp + geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(name),
+       y=paste('evaluation function'),
+       title=paste('Influence effect',zname,'on',name),
+       colour=paste(name,'\nalter')) +
+  theme_grey(base_size=26, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
+
+
+
+
+# ************ gender **************     
+# **********************************
+
+
+# model
+mytEffects4 <- includeEffects(mytEffects, egoX, altX, simX, interaction1="drinkb", include = F)
+mytEffects4 <- includeEffects(mytEffects4, transTrip, recip, outPop, name="trust.dep")
+mytEffects4 <- includeEffects(mytEffects4, avAlt, indeg, outdeg, interaction1="sex.coCovar")
+mytEffects4
+rest3 <- siena07(mySienaAlT, data = mySienaData2, effects = mytEffects4,
+                 returnDeps = T, useCluster=TRUE,initC=TRUE,nbrNodes=3, prevAns=rest2)
+siena.table(rest3, type = "html", file = "multiplex_selectionTrustSex.html", tstatPrint=T, sig=T, d=2)
+
+
+im.sex <- selectionMatrix(rest3, mySienaData2, "trust.dep", "sex.coCovar", 1:2)
+# It can be displayed
+im.sex
+
+library(ggplot2)
+vname <- "sex.coCovar"
+name <- "trust.dep"
+levls <- 1:2
+vselect <- selectionTable(rest3, mySienaAlT, name, vname, levls)
+valter <- as.matrix(vselect[1])
+select <- as.matrix(vselect[2])
+ggplot(vselect, aes(valter, select, group=ego, colour=ego))+geom_point() + geom_smooth(size=1.2, span=3) +
+  scale_colour_hue() +
+  scale_x_continuous(breaks=levls) +
+  theme(legend.key=element_blank())+
+  labs(x=paste(vname),
+       y=paste("selection function"),
+       title=paste("Effect",vname,"on",name),
+       colour=paste(vname)) +
+  theme_grey(base_size=26, base_family="") +
+  theme(legend.key.width=unit(1, "cm")) +
+  theme(plot.title=element_text(hjust=0.5))
