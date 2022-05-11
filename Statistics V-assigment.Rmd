@@ -16,8 +16,8 @@ lapply(list.of.packages, require, character.only = TRUE)
 rm(list=ls())  # clears all of R's memory!
 
 # set workingdirectory and load data
-setwd("C:/Users/anna_/Desktop/stats assignment")
-data <- load("C:/Users/anna_/Desktop/stats assignment/cctedata.Rdata")
+setwd("C:/Users/Brent/Desktop/stats assignment")
+data <- load("C:/Users/Brent/Desktop/stats assignment/cctedata.Rdata")
 ```
 # Preparation for the first question
 ```{r}
