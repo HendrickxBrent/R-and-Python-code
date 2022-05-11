@@ -1,4 +1,9 @@
-### vuil doos
+#####                                                                                      #####
+#####   code for the course 'structural equation modeling' at the University of Leuven     #####
+#####                                                                                      #####
+
+# author : Brent hendrickx
+
 
 library(stringr)
 library(dplyr)
