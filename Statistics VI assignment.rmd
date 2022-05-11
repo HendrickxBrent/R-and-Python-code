@@ -3,12 +3,12 @@ title             : "Replication study of: Digit ratio (2D:4D) moderates the imp
 shorttitle        : "Assignment of Statistics VI"
 
 author: 
-  - name          : "Chiara Van Reyn"
+  - name          : "Brent Hendrickx"
   - name          : "Kirsten Verhaegen"
   - name          : "Radosław Sterna"
   - name          : "Marie Bertels"
   - name          : "Mary Ann Ciosk"
-  - name          : "Brent Hendrickx"
+  - name          : "Chiara Van Reyn"
 
 author_note       : "Link to OSF: https://osf.io/y759r/?view_only=9823bc01f7964f5eb73bb8b07f0fd8d5"
 
