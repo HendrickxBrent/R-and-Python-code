@@ -1,3 +1,267 @@
+
+#=======================================================================================
+#=======================================================================================
+#
+#                         Experiment Stroop Task (Python code)
+#
+#=======================================================================================
+#=======================================================================================
+
+
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Aug  1 19:56:27 2019
+
+@author: brent
+"""
+
+# !pip install psychopy
+from psychopy import visual, core, event, data, gui
+import random
+import pandas as pd
+
+# make sure the text (Dia1, Dia2,..., Dia8) are in the same folder as this document!!!!
+
+#============================================================
+#============================================================
+#                          dialog 
+#============================================================
+#============================================================
+
+datapath = 'data stroop task'                   # directory to save data in
+
+dialog = gui.Dlg(title="Stroop task experiment")
+#ask input from participant
+dialog.addField('participant number: ')
+dialog.addField('gender:', choices=["male", "female"])
+#old(er) people might influence data (outliers) because they process slower
+dialog.addField('age: ')
+#reacting is measured by handmovement
+dialog.addField('left-handed:', choices=["No", "Yes"])
+#because some people have difficulties (differentiating brown from red for example):
+dialog.addField('Colorblind or problems with identifying right colors:', choices=["No", "Yes"])
+dialog.show()
+if dialog.OK:
+    #open the screen of the experiment
+    #win = visual.Window(fullscr=True)
+    win = visual.Window([1000,800])
+else:
+    core.quit()  # the user hit cancel so exit
+
+
+#need this data to write in file later
+part_nr = dialog.data[0]
+gender = dialog.data[1]
+age = dialog.data[2]
+Lhanded = dialog.data[3]
+colorblind = dialog.data[4]
+
+#make a document where date of participant will be saved in the title
+expdate = data.getDateStr()
+
+#============================================================
+#============================================================
+#                          parameters
+#============================================================
+#============================================================
+
+word_colorspractice = ["brown", "red","green"]
+text_colorspractice = ["brown", "red","green"]
+
+practice_parameters = []
+for i in range(len(word_colorspractice)):
+    for j in range(len(text_colorspractice)):
+        trial_parameters2 = {'word_color': word_colorspractice[i],
+                            'text_color' : text_colorspractice[j],
+                            'feedback'  : 'yes',
+                            'phase'     : 'practice_1'}
+        if word_colorspractice[i] != text_colorspractice[j]:
+             practice_parameters.append(trial_parameters2)
+
+practice2_parameters = []
+for i in range(len(word_colorspractice)):
+    for j in range(len(text_colorspractice)):
+        trial_parameters2 = {'word_color': word_colorspractice[i],
+                            'text_color' : text_colorspractice[j],
+                            'feedback'  : 'yes',
+                            'phase'     : 'practice_2'}
+        if word_colorspractice[i] != text_colorspractice[j]:
+             practice2_parameters.append(trial_parameters2)
+             
+#creating stimuli data for the experiment
+word_colors = ["brown", "red","green","blue","purple"]
+text_colors = ["brown", "red","green","blue","purple"]
+
+experiment_parametersphase1 = []
+for i in range(len(word_colors)):
+    for j in range(len(text_colors)):
+        trial_parameters = {'word_color': word_colors[i],
+                            'text_color': text_colors[j],
+                            'feedback'  : 'no',
+                            'phase'     : 'phase_1'}
+        if word_colors[i] != text_colors[j]:
+            experiment_parametersphase1.append(trial_parameters)
+
+experiment_parametersphase2 = []
+for i in range(len(word_colors)):
+    for j in range(len(text_colors)):
+        trial_parameters2 = {'word_color': word_colors[i],
+                            'text_color' : text_colors[j],
+                            'feedback'  : 'no',
+                            'phase'     : 'phase_2' }
+        if word_colors[i] != text_colors[j]:
+             experiment_parametersphase2.append(trial_parameters2)
+
+random.shuffle(experiment_parametersphase1)             
+random.shuffle(experiment_parametersphase2)
+
+response_mapping = {'q': 'brown',
+                    'd': 'red',
+                    'g': 'green',
+                    'j': 'blue',
+                    'l': 'purple'}
+
+all_parameters = practice_parameters + experiment_parametersphase1 + practice2_parameters + experiment_parametersphase2
+
+#============================================================
+#============================================================
+#              Beginning of the experiment
+#============================================================
+#============================================================
+
+
+feedbackcorrect = visual.TextStim(win=win,wrapWidth=100)
+feedbackcorrect.text = "correct!"
+feedbackwrong = visual.TextStim(win=win,wrapWidth=100)
+feedbackwrong.text = "wrong"
+
+#Welcome text
+dia1 = visual.ImageStim(win=win,image="Dia1.GIF",units="pix")
+dia1.draw()
+win.flip()
+event.waitKeys(keyList=["space"])
+
+#text: phase 1 intro
+dia2 = visual.ImageStim(win=win,image="Dia2.GIF",units="pix")
+dia2.draw()
+win.flip()
+event.waitKeys(keyList=["space"])
+
+#text: practice phase 1
+dia3 = visual.ImageStim(win=win,image="Dia3.GIF",units="pix")
+dia3.draw()
+win.flip()
+event.waitKeys(keyList=["space"])
+
+current_state = 'practice_1'
+current_state2 = 'practice_2'
+
+for trial in all_parameters:
+      
+    if current_state != trial['phase']:
+        current_state = trial['phase']
+        if trial['phase'] == 'phase_1':
+            #text: test phase 1
+            dia4 = visual.ImageStim(win=win,image="Dia4.GIF",units="pix")
+            dia4.draw()
+            win.flip()
+            event.waitKeys(keyList=["space"])
+            core.wait(1)
+        if trial['phase'] == 'practice_2':
+            #text: intro phase 1
+            dia5 = visual.ImageStim(win=win,image="Dia5.GIF",units="pix")
+            dia5.draw()
+            win.flip()
+            event.waitKeys(keyList=["space"])
+            #text: practice phase 2
+            dia6 = visual.ImageStim(win=win,image="Dia6.GIF",units="pix")
+            dia6.draw()
+            win.flip()
+            event.waitKeys(keyList=["space"])
+            core.wait(1)
+        if trial['phase'] =='phase_2':
+            #text: test phase 2
+            dia7 = visual.ImageStim(win=win,image="Dia7.GIF",units="pix")
+            dia7.draw()
+            win.flip()
+            event.waitKeys(keyList=["space"])
+    
+    word_color = trial['word_color']
+    text_color = trial['text_color']
+    #making sure the words are presented big enough -> bold and bigger
+    Trail1 = visual.TextStim(win, text=text_color, bold=True, height=0.2, color=word_color)
+    Trail1.draw()
+    clock = core.Clock()
+    win.flip()
+     
+    allKeys=event.waitKeys(keyList=["q","d","g","j","l","escape"])
+    if allKeys[0] == 'escape':
+    	win.close() + core.quit()
+    elif current_state == 'practice_1' or trial['phase'] == 'phase_1':
+        if response_mapping[allKeys[0]] == trial['text_color']:
+            Response = "1"
+        else:
+            Response = "0"
+    elif trial['phase'] == 'practice_2' or trial['phase'] == 'phase_2':
+        if response_mapping[allKeys[0]] == trial['word_color']:
+            Response = "1"
+        else:
+            Response = "0"
+
+    trial['response'] = Response
+    if  trial['feedback'] == 'yes':
+        if trial['response'] == '0':
+            feedbackwrong.draw()
+        else:
+            feedbackcorrect.draw()
+    time = clock.getTime()
+    win.flip()
+    trial['response_key'] = allKeys[0]
+    trial['reaction_time'] = time
+    trial['part_nr'] = part_nr
+    trial['gender'] = gender
+    trial['age'] = age  
+    trial['Lhanded'] = Lhanded
+    trial['colorblind'] = colorblind
+    core.wait(1)
+
+#text: thanks for participating    
+dia8 = visual.ImageStim(win=win,image="Dia8.GIF",units="pix")
+dia8.draw()
+win.flip()
+core.wait(1)
+
+#============================================================
+#============================================================
+#                       Data writing
+#============================================================
+#============================================================
+
+
+#writing all data to file
+data = pd.DataFrame(all_parameters, columns=['part_nr','gender','age','Lhanded','colorblind','phase','word_color','text_color','response_key', 'response','reaction_time'])
+data.to_csv("Part_nr" + part_nr + '_' + expdate + '.csv', index=False)
+
+win.close()
+core.quit()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #============================================================
 #============================================================
 #
